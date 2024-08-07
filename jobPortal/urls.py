@@ -27,7 +27,7 @@ schema_view = get_schema_view(
 
 urlpatterns = [
     path('', include('jobs.urls')),
-    path('admin/', admin.site.urls),
+    # path('admin/', admin.site.urls),
     # Phần custom lại
     path('myadmin/', my_admin_site.urls),
     # Phần Debug Toolbar

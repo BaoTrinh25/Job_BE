@@ -1,5 +1,5 @@
 from jobs.models import (JobApplication, Job, Company, JobSeeker, EmploymentType,
-                         Career, Comment, Rating, Like,
+                         Career, Rating, Like, User,
                          )
 from django.db.models import Count, Q, Avg
 from datetime import datetime
@@ -7,13 +7,13 @@ from django.db.models.functions import ExtractQuarter, ExtractYear, TruncMonth
 
 
 # Theo đề bài: Viết câu truy vấn đếm số đơn ứng tuyển của sinh viên theo nghề qua các quý và năm
-# def count_job_application_quarter_career():
-#     queryset = JobApplication.objects.filter(is_student=True) \
-#         .annotate(quarter=ExtractQuarter('date'), year=ExtractYear('date')) \
-#         .values('job__career__name', 'quarter', 'year') \
-#         .annotate(total_applications=Count('id')).order_by('total_applications', 'year', 'quarter')
-#
-#     return queryset
+def count_job_application_quarter_career():
+    queryset = JobApplication.objects.filter(is_student=True) \
+        .annotate(quarter=ExtractQuarter('date'), year=ExtractYear('date')) \
+        .values('job__career__name', 'quarter', 'year') \
+        .annotate(total_applications=Count('id')).order_by('total_applications', 'year', 'quarter')
+
+    return queryset
 
 # # Đếm số đơn tuyển dụng mỗi bài đăng
 # def count_job_applications_per_recruitment():
@@ -27,10 +27,11 @@ from django.db.models.functions import ExtractQuarter, ExtractYear, TruncMonth
 # Viết câu truy vấn đếm số lượng đơn xin việc (JobApplication) là giới tính nữ mỗi bài đăng tuyển việc làm (RecruitmentPost)
 # Kèm theo tổng số đơn xin việc của mỗi bài tuyển dụng
 
+# Tìm danh sách các bài đăng mà user đó đã đăng
 
 def recruitment_posts_with_female_applicants():
     return Job.objects.annotate(
-        num_female_applicants=Count('jobapplication', filter=Q(jobapplication__jobSeeker__user__gender=1)),
+        num_female_applicants=Count('jobapplication', filter=Q(jobapplication__jobseeker__user__gender=1)),
         # Giới tính nữ trong choices là 1
         total_applications=Count('jobapplication'),
     ).values('id', 'title', 'num_female_applicants', 'total_applications')
@@ -142,7 +143,7 @@ def count_recruitment_posts_by_employer():
 
 # Tính tổng số lượt comment trung bình mỗi bài đăng tuyển dụng
 def average_comments_per_recruitment_post():
-    average_comments = Comment.objects.values('interaction__job').annotate(
+    average_comments = Rating.objects.values('interaction__job').annotate(
         average_comments=Avg('id')
     ).aggregate(
         overall_average=Avg('average_comments')

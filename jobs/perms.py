@@ -11,14 +11,14 @@ class IsAdminOrSelf(permissions.BasePermission):
     def has_object_permission(self, request, view, obj):
         return request.user.is_authenticated and (request.user.is_staff or request.user.is_superuser or request.user == obj)
 
-# Người dùng xác thực và là chủ sở hữu (applicant)
+# Người dùng xác thực và là chủ sở hữu (jobseeker)
 class AppOwnerAuthenticated(permissions.IsAuthenticated):
     def has_object_permission(self, request, view, obj):
         # Kiểm tra xem người dùng có quyền chung hay không (IsAuthenticated)
         is_authenticated = self.has_permission(request, view)
 
         # Kiểm tra xem người dùng có phải là chủ sở hữu của đối tượng hay không
-        is_owner = request.user.applicant == obj
+        is_owner = request.user.jobSeeker == obj
 
         # Chỉ cho phép truy cập nếu cả hai điều kiện đều đúng
         return is_authenticated and is_owner
@@ -30,7 +30,7 @@ class EmOwnerAuthenticated(permissions.IsAuthenticated):
         is_authenticated = self.has_permission(request, view)
 
         # Kiểm tra xem người dùng có phải là chủ sở hữu của đối tượng hay không
-        is_owner = request.user.employer == obj
+        is_owner = request.user.company == obj
 
         # Trả về True nếu cả hai điều kiện đều đúng
         return is_authenticated and is_owner

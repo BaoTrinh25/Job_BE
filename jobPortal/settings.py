@@ -12,6 +12,8 @@ https://docs.djangoproject.com/en/4.2/ref/settings/
 
 from pathlib import Path
 
+from datetime import timedelta
+
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -54,8 +56,25 @@ INSTALLED_APPS = [
     'django_filters',
     'corsheaders',
     # 'django_redis'
+    'rest_framework_simplejwt',
 
 ]
+
+SIMPLE_JWT = {
+    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=5),
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=1),
+    'ROTATE_REFRESH_TOKENS': False,
+    'BLACKLIST_AFTER_ROTATION': True,
+    'UPDATE_LAST_LOGIN': False,
+    'ALGORITHM': 'HS256',
+    'VERIFYING_KEY': None,
+    'AUTH_HEADER_TYPES': ('Bearer',),
+    'USER_ID_FIELD': 'id',
+    'USER_ID_CLAIM': 'user_id',
+    'AUTH_TOKEN_CLASSES': ('rest_framework_simplejwt.tokens.AccessToken',),
+    'TOKEN_TYPE_CLAIM': 'token_type',
+    'JTI_CLAIM': 'jti',
+}
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
@@ -70,8 +89,11 @@ MIDDLEWARE = [
 
 ]
 
-CORS_ALLOW_ALL_ORIGINS = True
+# Hoặc cho phép tất cả nguồn nhưng yêu cầu credentials
+CORS_ALLOW_ALL_ORIGINS = True  # Cần thêm điều này nếu sử dụng CORS_ALLOW_ALL_ORIGINS
 
+# Cho phép gửi cookie cùng yêu cầu
+CORS_ALLOW_CREDENTIALS = True
 
 INTERNAL_IPS = [
 
@@ -118,11 +140,9 @@ AUTH_USER_MODEL = 'jobs.User'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.mysql',
-        # Tạo csdl mới tên là ecoursesdb
         'NAME': 'jobdb',
         'USER': 'root',
         'PASSWORD': '123456789',
-        # Mặc định là Localhot
         'HOST': ''
     }
 }
@@ -140,8 +160,21 @@ cloudinary.config(
 REST_FRAMEWORK = {
     # Phần OAuth2
     'DEFAULT_AUTHENTICATION_CLASSES': (
-        'oauth2_provider.contrib.rest_framework.OAuth2Authentication',)
+        'oauth2_provider.contrib.rest_framework.OAuth2Authentication',
+        'rest_framework_simplejwt.authentication.JWTAuthentication',
+    )
+}
 
+CORS_ALLOWED_ORIGINS = [
+    'http://localhost:3000',  # Hoặc nguồn của frontend
+]
+
+# Cấu hình JWT
+SIMPLE_JWT = {
+    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=30), #Thời gian sống của access token.
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=7), #Thời gian sống của refresh token
+    'ROTATE_REFRESH_TOKENS': True, #refresh token sẽ được làm mới mỗi khi access token được làm mới.
+    'BLACKLIST_AFTER_ROTATION': True, #refresh token cũ sẽ được đưa vào danh sách đen sau khi token mới được cấp phát
 }
 
 # Password validation
