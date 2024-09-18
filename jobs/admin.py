@@ -13,6 +13,7 @@ from jobs import dao
 from django.shortcuts import render
 from django.contrib.auth.models import Permission  # Phần chứng thực
 from oauth2_provider.models import AccessToken, Application, Grant, RefreshToken, IDToken
+# from .models import User as CustomUser
 
 
 class JobApplicationForm(forms.ModelForm):
@@ -27,9 +28,10 @@ class JobApplicationAdmin(admin.ModelAdmin):
     list_display = ['id', 'job', 'jobseeker', 'status', 'active', 'created_date']
     search_fields = ['id', 'created_date', 'status__role', 'job__title', 'jobseeker__user__username']
 #   'status__role' => lấy trường role ở bảng Status thông qua khóa ngoại status của bảng hiện tại JobApplication
-#   'jobseeker__user__username' => Tương tự như vậy nhưng đi qua thêm 1 bảng trung gian nữa (User)
+#   'applicant__user__username' => Tương tự như vậy nhưng đi qua thêm 1 bảng trung gian nữa (User)
 
 
+# Thiết kế lại form cho model User
 class UserForm(forms.ModelForm):
     password1 = forms.CharField(label='Password', widget=forms.PasswordInput(render_value=True))
     password2 = forms.CharField(label='Password confirmation', widget=forms.PasswordInput(render_value=True))
@@ -58,14 +60,15 @@ class UserAdmin(admin.ModelAdmin):
     search_fields = ['id', 'mobile']
     readonly_fields = ['is_superuser']  # Trường is_superuser chỉ cho đọc không cho chỉnh
     form = UserForm  # Ghi đè lại form mặc định (form mình tự tạo ghi đè lên)
-
-    def avatar(self, user):  # Thiết kế để khi lick vào link url của ảnh thì có thể truy cập vào ảnh
+    # Thiết kế để khi lick vào link url của ảnh thì có thể truy cập vào ảnh
+    def avatar(self, user):
         if user.avatar:
             if type(user.image) is cloudinary.CloudinaryResource:
                 return mark_safe(
                     "<img src='{img_url}' alt='{alt}' width=120px/>".format(img_url=user.avatar.url, alt='AvatarUser'))
             return mark_safe("<img src='/static/{img_url}' alt='{alt}' width=120px/>".format(img_url=user.avatar.name,
                                                                                              alt='AvatarUser'))
+
 
 class JobSeekerForm(forms.ModelForm):
     class Meta:
@@ -103,17 +106,22 @@ class JobSeekerAdmin(admin.ModelAdmin):
     def career(self, obj):
         return obj.career.name
 
+    # Để cho list_display lấy thông tin
     def user_username(self, obj):
         return obj.user.username
 
+    # Để cho list_display lấy thông tin
     def user_mobile(self, obj):
         return obj.user.mobile
 
+    # Để cho list_display lấy thông tin
     def user_email(self, obj):
         return obj.user.email
 
+    # Để cho list_display lấy thông tin
     def user_gender(self, obj):
         return obj.user.gender
+
 
 
 # Tạo inlineModel (Từ model Employer có thể thêm luôn RecruitmentPost)
@@ -123,9 +131,9 @@ class CompanyInline(admin.StackedInline):
 
 
 class CompanyAdmin(admin.ModelAdmin):
-    list_display = ['id', 'position', 'companyName', 'company_type', 'user_username', 'user_mobile', 'user_email',
+    list_display = ['id', 'companyName', 'company_type', 'user_username', 'user_mobile', 'user_email',
                     'user_gender', ]
-    search_fields = ['id', 'position', 'companyName', 'user__username', 'user__mobile', 'user__email', ]
+    search_fields = ['id', 'companyName', 'user__username', 'user__mobile', 'user__email', ]
     # Thêm vào để có thể tạo inlineModel
     inlines = (CompanyInline,)
 
@@ -141,6 +149,7 @@ class CompanyAdmin(admin.ModelAdmin):
     def user_gender(self, obj):
         return obj.user.gender
 
+    # Để cho list_display lấy thông tin
     def company_type(self, obj):
         return dict(Company.STATUS_CHOICES)[obj.status]
 
@@ -157,7 +166,7 @@ class EmploymentTypeAdmin(admin.ModelAdmin):
 
 class JobAdmin(admin.ModelAdmin):
     list_display = ['id', 'title', 'deadline', 'quantity', 'career_name', 'position', 'companyName', 'employmenttype',
-                    'gender', 'location', 'salary', 'reported']
+                    'gender', 'location', 'salary']
     search_fields = ['id', 'title', 'career__name', 'position', 'company__companyName', 'employmenttype__type',
                      'location', 'gender']
     list_filter_horizontal = ['quantity', 'salary']  # Lọc theo chiều ngang => Không hiện thanh kéo
@@ -168,17 +177,6 @@ class JobAdmin(admin.ModelAdmin):
     def companyName(self, obj):
         return obj.company.companyName
 
-    # Custom function để hiển thị trạng thái reported
-    def reported(self, obj):
-        if obj.reported:
-            return format_html(
-                '<span style="color:red;">Yes</span>')  # Nếu bài đăng bị báo cáo, hiển thị "Yes" với màu đỏ
-        else:
-            return format_html(
-                '<span style="color:green;">No</span>')  # Nếu bài đăng không bị báo cáo, hiển thị "No" với màu xanh lá cây
-
-    reported.short_description = 'Reported'  # Đặt tên cho cột "Reported" trong trang quản trị
-    reported.admin_order_field = 'reported'  # Cho phép sắp xếp bài đăng theo trạng thái reported
 
     # Phần tìm kiếm lương lớn hơn hoặc bằng
     def get_search_results(self, request, queryset, search_term):
@@ -203,39 +201,6 @@ class SkillAdmin(admin.ModelAdmin):
 class CareerAdmin(admin.ModelAdmin):
     list_display = ['id', 'name']
 
-# class CommentInline(admin.StackedInline):
-#     model = Comment  # Chỉ định rằng InlineAdmin này sẽ hiển thị các comment con của một comment cha.
-#     fk_name = 'parent'  # Chỉ định khóa ngoại liên kết các comment con với comment cha là parent.
-#     extra = 0  # Không hiển thị trường để thêm comment con mới khi chưa có comment cha.
-#     # Chỉ định các trường sẽ hiển thị trong InlineAdmin.
-#     fields = ['content', 'jobseeker', 'company', 'job']
-#     # Đánh dấu các trường applicant, employer, recruitment chỉ để đọc, không cho phép chỉnh sửa trong InlineAdmin.
-#     readonly_fields = ['job']
-
-
-# class CommentAdmin(admin.ModelAdmin):
-#     list_display = ['id', 'content', 'jobseeker_username', "interaction__job__title"]
-#     search_fields = ['id', 'jobseeker__user__username', 'company__user__username']
-#     # 'applicant__user__username', 'employer__user__username' : search_fields lấy thông tin thông qua kế thừa model -> khóa ngoại -> Nơi cần lấy thông tin
-#     inlines = [CommentInline]
-#
-#     # Để cho list_display lấy thông tin: Thông qua kế thừa model -> Khóa ngoại -> Nơi cần lấy thông tin
-#     def jobseeker_username(self, obj):
-#         if obj.jobseeker:
-#             return obj.jobseeker.user.username
-#         return None
-#
-#     # Vì lấy chung thông tin tới User nên phải viết thêm 1 hàm def
-#     # Để cho list_display lấy thông tin: Thông qua kế thừa model -> Khóa ngoại -> Nơi cần lấy thông tin
-#     def company_username(self, obj):
-#         if obj.company:
-#             return obj.company.user.username
-#         return None
-#
-#     # Để cho list_display lấy thông tin: Thông qua kế thừa model -> Khóa ngoại -> Nơi lấy thông tin
-#     def interaction__job__title(self, obj):
-#         return obj.job.title
-
 
 class InteractionAdmin(admin.ModelAdmin):
     def jobseeker_username(self, obj):
@@ -255,23 +220,32 @@ class InteractionAdmin(admin.ModelAdmin):
             return obj.jobseeker.user.username
         return None
 
-class RatingAdmin(InteractionAdmin):
-    list_display = ['id', 'rating', 'get_username', 'interaction__job__title']
-    search_fields = ['id', 'rating', 'jobseeker__user__username', 'company__user__username']
 
-    def get_list_display(self, request):
-        # Kiểm tra loại người tạo rating và quyết định các trường hiển thị
-        if self.model.objects.filter(company__isnull=False).exists():
-            # Nếu có ít nhất một rating liên quan đến company
-            return ['id', 'rating', 'company_username', 'interaction__job__title']
-        else:
-            # Nếu tất cả các rating đều liên quan đến jobseeker
-            return ['id', 'rating', 'jobseeker_username', 'interaction__job__title']
+class RatingAdmin(admin.ModelAdmin):
+    list_display = ['id', 'rating', 'get_jobseeker_username', 'get_job_title', 'get_company_name']
+    search_fields = ['id', 'rating', 'jobseeker__user__username', 'job__company__name']
 
-    def interaction__job__title(self, obj):
+    def get_jobseeker_username(self, obj):
+        """Trả về username của jobseeker nếu có."""
+        if obj.jobseeker and obj.jobseeker.user:
+            return obj.jobseeker.user.username
+        return None
+    get_jobseeker_username.short_description = 'Jobseeker Username'
+
+    def get_job_title(self, obj):
+        """Trả về tiêu đề công việc từ job."""
         if obj.job:
             return obj.job.title
         return None
+    get_job_title.short_description = 'Job Title'
+
+    def get_company_name(self, obj):
+        """Trả về tên công ty từ job."""
+        if obj.job and obj.job.company:
+            return obj.job.company.companyName
+        return None
+    get_company_name.short_description = 'Company Name'
+
 
 class LikeAdmin(InteractionAdmin):
     list_display = ['id', 'active', 'get_username', 'get_user_role', 'interaction__job__title']
@@ -301,6 +275,7 @@ class LikeAdmin(InteractionAdmin):
     interaction__job__title.short_description = 'Job Title'
 
 
+
 class NotificationAdmin(admin.ModelAdmin):
     list_display = ['id', 'content', 'created_date']
     search_fields = ['content']
@@ -314,9 +289,9 @@ class UserNotificationAdmin(admin.ModelAdmin):
 
 # Tạo trang admin theo cách của mình -> Ghi đè lại cái đã có
 class MyAdminSite(admin.AdminSite):
-    site_header = 'JOB MANAGEMENT SYSTEM'
+    site_header = 'NAKO_JOB MANAGEMENT SYSTEM'
     index_title = 'Welcome to the management system'
-    site_title = 'Custom by DTT'
+    site_title = 'Custom by NakoJob'
     site_url = "/"
 
     # Ghi đè lại url đã có
@@ -368,7 +343,7 @@ class ApplicationAdmin(admin.ModelAdmin):
 
 
 # Tạo đối tượng
-my_admin_site = MyAdminSite(name='myadmin')  # tạo đường dẫn myadmin thay thế cho admin hiện tại
+my_admin_site = MyAdminSite(name='myadmin')  # tạo đường dẫn myadmin
 
 my_admin_site.register(User, UserAdmin),
 my_admin_site.register(Company, CompanyAdmin),

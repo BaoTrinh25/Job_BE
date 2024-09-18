@@ -1,18 +1,28 @@
 from rest_framework import serializers
-from jobs.models import (User, JobSeeker, Skill, Area, Career, EmploymentType, Company, Status, Job,
+from jobs.models import (User, JobSeeker, Skill, Area, Career, EmploymentType, Company, Status, Job, Invoice,
                          Rating, JobApplication, Notification, Like)
 from django.core.exceptions import ValidationError
 from django.contrib.auth import get_user_model
 from .models import COMPANY_CHOICES
-from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
+from django.utils.html import strip_tags #loại bỏ thẻ html bên trong richtextfield
 
 
 User = get_user_model()
 
+# class AvatarSerializer(serializers.ModelSerializer):
 
-class RefreshTokenSerializer(serializers.Serializer):
-    accessToken = serializers.CharField()
-    roles = serializers.CharField()
+#   def to_representation(self, instance):
+#         req = super().to_representation(instance)
+#         req['image'] = instance.image.url
+#         return req
+
+
+class InvoiceSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Invoice
+        fields = ['id', 'stripe_session_id', 'amount_total', 'currency', 'payment_status', 'payment_date', 'customer_email']
+        read_only_fields = ['id', 'payment_date', 'user']
+
 
 
 class SkillSerializer(serializers.ModelSerializer):
@@ -49,9 +59,6 @@ class StatusSerializer(serializers.ModelSerializer):
 # Dùng để tạo User
 class UserSerializer(serializers.ModelSerializer):
     # CHỈ ĐƯỜNG DẪN TUYỆT ĐỐI ẢNH ĐƯỢC UP TRÊN CLOUDINARY
-    # to_representation tùy chỉnh cách biểu diễn (representation) của một đối tượng (instance) khi nó được chuyển đổi thành dữ liệu JSON
-    # hoặc dữ liệu khác để trả về cho client.
-    # instance ở đây là User
     def to_representation(self, instance):
         req = super().to_representation(instance)
         # Nếu ảnh khác null mới làm
@@ -61,7 +68,8 @@ class UserSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ['id', 'first_name', 'last_name', 'username', 'password', 'gender', 'email', 'mobile', 'avatar', 'role']
+        # Qua models.py -> ctrl + trỏ vào AbstractUser để thấy được các trường của User
+        fields = ['id', 'first_name', 'last_name', 'username', 'password', 'gender', 'email', 'mobile', 'avatar', 'role', 'is_staff']
 
         # Thiết lập mật khẩu chỉ để ghi
         extra_kwargs = {
@@ -114,7 +122,7 @@ class UserDetailSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ['id', 'first_name', 'last_name', 'username', 'email', 'mobile', 'avatar', 'role', 'jobSeeker', 'company']
+        fields = ['id', 'first_name', 'last_name', 'username', 'email', 'mobile', 'avatar', 'role', 'jobSeeker', 'company', 'gender', 'is_staff']
         depth = 1
 
 
@@ -147,8 +155,15 @@ class JobSeekerCreateSerializer(serializers.ModelSerializer):
         jobseeker.save()
         return jobseeker
 
+    # def to_representation(self, instance):
+    #     req = super().to_representation(instance)
+    #     # Nếu ảnh khác null mới làm
+    #     if instance.cv:
+    #         req['cv'] = instance.cv.url
+    #     return req
     def to_representation(self, instance):
         rep = super().to_representation(instance)
+        # Thêm tên cho các trường skills và areas
         rep['skills'] = SkillSerializer(instance.skills, many=True).data
         rep['areas'] = AreaSerializer(instance.areas, many=True).data
         # Nếu ảnh khác null mới làm
@@ -177,17 +192,25 @@ class JobSeekerSerializer(serializers.ModelSerializer):
         return req
 
 
+
 # Phần để hiển thị
 class CompanySerializer(serializers.ModelSerializer):
     company_type_display = serializers.SerializerMethodField()
 
     class Meta:
         model = Company
-        fields = ['id', 'companyName', 'position', 'information', 'address', 'company_type',
+        fields = ['id', 'companyName', 'information', 'address', 'logo', 'total_staff', 'company_type',
                   'company_type_display']
 
     def get_company_type_display(self, obj):
         return dict(COMPANY_CHOICES).get(obj.company_type)
+
+    def to_representation(self, instance):
+        req = super().to_representation(instance)
+        # Nếu ảnh khác null mới làm
+        if instance.logo:
+            req['logo'] = instance.logo.url
+        return req
 
 
 # Phần để tạo
@@ -196,7 +219,7 @@ class CompanyCreateSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Company
-        fields = ['id', 'companyName', 'position', 'information', 'address', 'company_type',
+        fields = ['id', 'companyName', 'information', 'address', 'logo', 'total_staff', 'company_type',
                   'company_type_display']
 
     def get_company_type_display(self, obj):
@@ -209,7 +232,7 @@ class JobSerializer(serializers.ModelSerializer):
     employmenttype = EmploymentTypeSerializer()
     area = AreaSerializer()
     created_date = serializers.SerializerMethodField()
-    deadline = serializers.SerializerMethodField()
+    deadline = serializers.DateField(format="%d/%m/%Y", input_formats=["%d/%m/%Y"])
 
     # Tạo đường dẫn tuyệt đối cho trường image (image upload lên Cloudinary)
     def to_representation(self, instance):
@@ -230,10 +253,35 @@ class JobSerializer(serializers.ModelSerializer):
             return instance.deadline.strftime("%d/%m/%Y")
         return ""
 
+    def update(self, instance, validated_data):
+        career_data = validated_data.pop('career', None)
+        employment_type_data = validated_data.pop('employmenttype', None)
+
+        # Update the main Job instance fields
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+
+        # Handle nested Career updates
+        if career_data:
+            career_instance = instance.career
+            for attr, value in career_data.items():
+                setattr(career_instance, attr, value)
+            career_instance.save()
+
+        # Handle nested EmploymentType updates
+        if employment_type_data:
+            employmenttype_instance = instance.employmenttype
+            for attr, value in employment_type_data.items():
+                setattr(employmenttype_instance, attr, value)
+            employmenttype_instance.save()
+
+        instance.save()
+        return instance
+
     class Meta:
         model = Job
         fields = ['id', 'company', 'image', 'career', 'employmenttype', 'area', 'title', 'deadline',
-        'quantity', 'location', 'salary', 'description', 'experience', 'created_date']
+        'quantity', 'location', 'salary', 'description', 'experience', 'created_date', 'active']
 
 
 class JobCreateSerializer(serializers.ModelSerializer):
@@ -283,16 +331,22 @@ class RatingSerializer(serializers.ModelSerializer):
         }
 
 
-class JobApplicationSerializer(serializers.ModelSerializer):
+class RatingUpdateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Rating
+        fields = ['rating', 'comment']
 
-    jobseeker = serializers.PrimaryKeyRelatedField(queryset=JobSeeker.objects.all(), write_only=True)
+
+class JobApplicationSerializer(serializers.ModelSerializer):
     status = serializers.PrimaryKeyRelatedField(read_only=True)
-    job = serializers.PrimaryKeyRelatedField(queryset=Job.objects.all(), write_only=True)
-    created_date = serializers.SerializerMethodField()
+    date = serializers.SerializerMethodField()
+    job = JobSerializer()
+    user = serializers.SerializerMethodField()
+    content = serializers.SerializerMethodField()
 
     class Meta:
         model = JobApplication
-        fields = ['id', 'is_student', 'job', 'jobseeker', 'content', 'status']
+        fields = ['id', 'is_student', 'job', 'user', 'content', 'status', 'date']
         read_only_fields = ['status']
         depth = 1
 
@@ -300,23 +354,35 @@ class JobApplicationSerializer(serializers.ModelSerializer):
         validated_data['status'] = Status.objects.get(role='Pending')
         return super().create(validated_data)
 
+    # Thêm phương thức get_date để định nghĩa cách trả về giá trị cho 'date'
+    def get_date(self, obj):
+        if obj.date:
+            return obj.date.strftime("%d/%m/%Y %H:%M")
+        return ""
+
+    def get_user(self, obj):
+        return UserDetailSerializer(obj.jobseeker.user).data
+
+    def get_content(self, obj):
+        # Sử dụng strip_tags để loại bỏ thẻ HTML, chỉ giữ lại nội dung văn bản
+        return strip_tags(obj.content)
+
 
 class JobApplicationStatusSerializer(serializers.ModelSerializer):
-
     job = JobSerializer()
-    jobseeker = JobSeekerSerializer()
+    user = UserDetailSerializer()
     status = StatusSerializer()
-    created_date = serializers.SerializerMethodField()
+    date = serializers.SerializerMethodField()
 
     #Format lại giá trị ngày
-    def get_created_date(self, instance):
+    def get_date(self, instance):
         if instance.created_date:
-            return instance.created_date.strftime("%d/%m/%Y %H:%M")
+            return instance.date.strftime("%d/%m/%Y %H:%M")
         return ""
 
     class Meta:
         model = JobApplication
-        fields = ['id', 'job', 'jobseeker', 'status', 'content', 'is_student', 'created_date']
+        fields = ['id', 'job', 'user', 'status', 'content', 'is_student', 'date']
 
 
 class LikeSerializer(serializers.ModelSerializer):

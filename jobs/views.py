@@ -6,26 +6,26 @@ from rest_framework.response import Response
 from rest_framework import viewsets, generics, permissions, status
 from rest_framework.decorators import action
 from jobs import dao
-from .models import JobApplication, Company, JobSeeker, User, Notification, Like, UserGoogle
-from .serializers import (JobApplicationSerializer, RatingSerializer, Career, EmploymentType, Area, JobSeekerCreateSerializer,
-                          AuthenticatedJobSerializer, LikeSerializer, JobSerializer, JobCreateSerializer, JobApplicationStatusSerializer, NotificationSerializer,Skill, SkillSerializer, AreaSerializer)
+from .models import JobApplication, Company, JobSeeker, User, Notification, Like, Status, Invoice
+from .serializers import (JobApplicationSerializer, RatingSerializer, Career, EmploymentType, Area, JobSeekerCreateSerializer
+                          ,AuthenticatedJobSerializer, LikeSerializer, JobSerializer, JobCreateSerializer,
+                          JobApplicationStatusSerializer, NotificationSerializer,Skill, SkillSerializer, AreaSerializer, InvoiceSerializer)
+from rest_framework.permissions import IsAuthenticated
 from django.shortcuts import get_object_or_404
-from .paginators import JobApplicationPagination, LikedJobPagination
+from .paginators import LikedJobPagination
 from datetime import datetime
 from .filters import JobFilter
 from django_filters.rest_framework import DjangoFilterBackend
 
-from rest_framework_simplejwt.exceptions import TokenError
-from rest_framework.decorators import api_view
-from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
-from .serializers import RefreshTokenSerializer
-from rest_framework_simplejwt.tokens import RefreshToken
-from google.oauth2 import id_token
-from google.auth.transport import requests
-
 from drf_yasg import openapi
 from drf_yasg.utils import swagger_auto_schema
-from .schemas import apply_job_schema, job_posting_schema, jobSeeker_create_schema, employer_create_schema, num_application_schema
+from .schemas import apply_job_schema, jobSeeker_create_schema, employer_create_schema, num_application_schema
+
+from jobPortal import settings
+import stripe
+from rest_framework.viewsets import ViewSet
+from rest_framework.views import APIView
+
 
 
 # Create your views here.
@@ -42,130 +42,155 @@ from .schemas import apply_job_schema, job_posting_schema, jobSeeker_create_sche
 # RetrieveUpdateDestroyAPIView = GET + PUT + PATCH + DELETE : Xem chi tiết + cập nhật toàn phần + cập nhật một phần + xóa
 
 
-@api_view(['POST'])
-def google_login(request):
-    token = request.data.get('token')
-    if not token:
-        return Response({'error': 'Token is missing'}, status=status.HTTP_400_BAD_REQUEST)
 
-    # Verify token with Google
-    response = requests.get(f'https://oauth2.googleapis.com/tokeninfo?id_token={token}')
-    if response.status_code != 200:
-        return Response({'error': 'Invalid token'}, status=status.HTTP_400_BAD_REQUEST)
+#######      THANH TOÁN   ########
+stripe.api_key = settings.STRIPE_SECRET_KEY
 
-    data = response.json()
-    email = data['email']
-    name = data['name']
-    google_id = data['sub']
+class StripeCheckoutViewSet(viewsets.ViewSet):
+    permission_classes = [IsAuthenticated]  # Chỉ cho phép người dùng đã xác thực
 
-    # Check if user already exists
-    user, created = User.objects.get_or_create(email=email, defaults={'username': name})
+    def create(self, request):
+        """ THANH TOÁN """
+        try:
+            # Lấy price_id từ request body
+            price_id = request.data.get('price_id')
 
-    # Generate tokens
-    refresh = RefreshToken.for_user(user)
+            if not price_id:
+                return Response({"error": "Price ID is required."}, status=status.HTTP_400_BAD_REQUEST)
 
-    return Response({
-        'refresh': str(refresh),
-        'access': str(refresh.access_token),
-    })@api_view(['POST'])
-def google_login(request):
-    token = request.data.get('token')
-    if not token:
-        return Response({'error': 'Token is missing'}, status=status.HTTP_400_BAD_REQUEST)
+            # Tạo session thanh toán với price_id được gửi từ front-end
+            checkout_session = stripe.checkout.Session.create(
+                line_items=[
+                    {
+                        'price': price_id,  # Dùng price_id từ yêu cầu
+                        'quantity': 1,
+                    },
+                ],
+                payment_method_types=['card'],
+                mode='payment',
+                success_url=settings.SITE_URL + '/payment_success?success=true&session_id={CHECKOUT_SESSION_ID}',
+                cancel_url=settings.SITE_URL + '?canceled=true',
+            )
 
-    # Verify token with Google
-    response = requests.get(f'https://oauth2.googleapis.com/tokeninfo?id_token={token}')
-    if response.status_code != 200:
-        return Response({'error': 'Invalid token'}, status=status.HTTP_400_BAD_REQUEST)
+             # Save the session to the database with a pending state
+            invoice = Invoice(
+                user=request.user,
+                stripe_session_id=checkout_session.id,
+                amount_total=0.00
+            )
+            invoice.save()
 
-    data = response.json()
-    email = data['email']
-    name = data['name']
-    google_id = data['sub']
+            return Response({"url": checkout_session.url}, status=status.HTTP_200_OK)
+        except stripe.error.StripeError as e:
+            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        except Exception as e:
+            return Response({'error': 'Something went wrong: ' + str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-    # Check if user already exists
-    user, created = User.objects.get_or_create(email=email, defaults={'username': name})
-
-    # Generate tokens
-    refresh = RefreshToken.for_user(user)
-
-    return Response({
-        'refresh': str(refresh),
-        'access': str(refresh.access_token),
-    })
-
-
-@api_view(['GET'])
-def refresh_token(request):
-    try:
-        refresh_token = request.COOKIES.get('refresh_token')
-        if not refresh_token:
-            return Response({'detail': 'Refresh token missing'}, status=status.HTTP_401_UNAUTHORIZED)
-
-        token = RefreshToken(refresh_token)
-        new_access_token = token.access_token
-
-        response_data = {
-            'accessToken': str(new_access_token),
-            'roles': 'user'
-        }
-
-        serializer = RefreshTokenSerializer(data=response_data)
-        if serializer.is_valid():
-            return Response(serializer.validated_data, status=status.HTTP_200_OK)
-        return Response({'detail': 'Invalid data'}, status=status.HTTP_400_BAD_REQUEST)
-    except TokenError as e:
-        return Response({'detail': str(e)}, status=status.HTTP_401_UNAUTHORIZED)
+     # xem chi tiết hóa đơn
+    def retrieve(self, request, session_id=None, *args, **kwargs):  # Đảm bảo session_id được nhận từ tham số
+        """ CHI TIẾT HÓA ĐƠN """
+        try:
+            # Tìm hóa đơn bằng stripe_session_id
+            invoice = Invoice.objects.get(stripe_session_id=session_id, user=request.user)
+            serializer = InvoiceSerializer(invoice)
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        except Invoice.DoesNotExist:
+            print(f"Session ID: {session_id}, User ID: {request.user.id}")  # Ghi lại thông tin
+            return Response({'error': 'Invoice not found.'}, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
-#Lưu trữ Refresh Token
-@api_view(['POST'])
-def login(request):
-    serializer = TokenObtainPairSerializer(data=request.data)
-    if serializer.is_valid():
-        refresh = serializer.validated_data['refresh']
-        access = serializer.validated_data['access']
-
-        response = Response({
-            'accessToken': str(access),
-            'refreshToken': str(refresh)
-        }, status=status.HTTP_200_OK)
-
-        # Đặt refresh token vào cookie
-        response.set_cookie(
-            'refresh_token',
-            str(refresh),
-            httponly=True,
-            secure=False,  # Đặt thành True nếu bạn sử dụng HTTPS
-            samesite='Lax'
-        )
-
-        return response
-    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    # danh sách hóa đơn
+    def list(self, request):
+        """ DANH SÁCH HÓA ĐƠN """
+        invoices = Invoice.objects.filter(user=request.user)
+        serializer = InvoiceSerializer(invoices, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
 
-#Xóa token khi đăng xuất
-@api_view(['POST'])
-def logout(request):
-    response = Response(
-        {'detail': 'Successfully logged out'},
-        status=status.HTTP_205_RESET_CONTENT
-    )
-    response.delete_cookie('refresh_token')
-    return response
+#     # CẬP NHẬT THÔNG TIN SAU THANH TOÁN
+#     @action(detail=False, methods=['get'], url_path='payment-success')
+#     def payment_success(self, request):
+#         """ CẬP NHẬT THÔNG TIN SAU THANH TOÁN """
+#         session_id = request.query_params.get('session_id')
+
+#         if not session_id:
+#             return Response({"error": "Session ID is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+#         try:
+#             # Lấy thông tin session từ Stripe
+#             session = stripe.checkout.Session.retrieve(session_id)
+
+#             if session.payment_status == 'paid':
+#                 # Tìm hóa đơn trong database dựa trên session_id
+#                 try:
+#                     invoice = Invoice.objects.get(stripe_session_id=session_id, user=request.user)
+#                 except Invoice.DoesNotExist:
+#                     return Response({"error": "Invoice not found."}, status=status.HTTP_404_NOT_FOUND)
+
+#                 # Cập nhật thông tin thanh toán
+#                 invoice.amount_total = session.amount_total / 100  # Số tiền trả về từ Stripe theo cent
+#                 invoice.currency = session.currency
+#                 invoice.payment_status = session.payment_status
+#                 invoice.payment_date = timezone.now()
+
+#                 # Lấy email khách hàng từ session nếu có
+#                 if session.customer_details:
+#                     invoice.customer_email = session.customer_details.email
+
+#                 invoice.save()
+
+#                 return Response({
+#                     "message": "Payment successful",
+#                     "invoice": {
+#                         "invoice_id": invoice.id,
+#                         "session_id": invoice.stripe_session_id,
+#                         "amount_total": invoice.amount_total,
+#                         "currency": invoice.currency,
+#                         "payment_status": invoice.payment_status,
+#                         "payment_date": invoice.payment_date,
+#                         "customer_email": invoice.customer_email,
+#                     }
+#                 }, status=status.HTTP_200_OK)
+
+#             else:
+#                 return Response({"error": "Payment not successful"}, status=status.HTTP_400_BAD_REQUEST)
+
+#         except stripe.error.StripeError as e:
+#             return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+#         except Exception as e:
+#             return Response({'error': 'Something went wrong: ' + str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+
+# class InvoiceView(APIView):
+#     def get(self, request, session_id):
+#         try:
+#             # Lấy session thanh toán từ Stripe bằng session_id
+#             checkout_session = stripe.checkout.Session.retrieve(session_id)
+
+#             # Lấy thông tin thanh toán từ PaymentIntent
+#             payment_intent = stripe.PaymentIntent.retrieve(checkout_session.payment_intent)
+
+#             # Trả về thông tin hóa đơn cho front-end
+#             return Response({
+#                 'id': payment_intent.id,
+#                 'customer_email': checkout_session.customer_details['email'],
+#                 'amount_total': payment_intent.amount / 100,  # Đơn vị từ cents sang tiền tệ
+#                 'currency': payment_intent.currency,  # Tiền tệ của thanh toán
+#                 'payment_status': payment_intent.status,
+#                 'payment_date': payment_intent.created,
+#             }, status=status.HTTP_200_OK)
+#         except Exception as e:
+#             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
 
 
 class JobViewSet(viewsets.ModelViewSet):
-    # Trong Django, queryset là một biến được sử dụng trong các API view để xác định tập hợp các đối tượng dữ liệu từ cơ sở dữ liệu
-    # mà API view sẽ hoạt động trên đó.
-    # queryset = RecruitmentPost.objects.all().order_by('id')
     queryset = Job.objects.filter(active=True).order_by('id')
-    # Trong Django REST Framework, khi bạn thiết lập một API view, bạn cần xác định loại dữ liệu nào sẽ được sử dụng để biểu diễn dữ liệu trả về từ API đó.
-    # Điều này được thực hiện thông qua việc chỉ định một lớp serializer bằng cách sử dụng thuộc tính serializer_class.
-    # Đoạn mã này đang chỉ định rằng API view sẽ sử dụng lớp serializer JobSerializer từ module serializers
-    # Nói cách khác, khi bạn truy vấn dữ liệu từ model Job, dữ liệu sẽ được trả về dưới dạng các đối tượng Job, và sau đó được chuyển đổi thành định dạng JSON
-    # (hoặc XML) thông qua serializer này trước khi được trả về từ API.
-    serializer_class = serializers.JobSerializer  # Tùy chỉnh cách dữ liệu được biểu diễn và xử lý trước khi nó được gửi đến client
+    queryset = Job.objects.order_by('id')
+    serializer_class = serializers.JobSerializer
 
     # Thiết lập lớp phân trang (pagination class) cho một API view cụ thể.
     pagination_class = paginators.JobPaginator
@@ -186,6 +211,26 @@ class JobViewSet(viewsets.ModelViewSet):
             return [perms.EmIsAuthenticated()]
         return [permissions.AllowAny()]
 
+    #ghi đè json
+    def get_serializer_class(self):
+        if self.action == 'create':
+            return serializers.JobCreateSerializer
+
+        if self.action == 'create_rating':
+            return serializers.RatingSerializer
+
+        if self.action == 'get_liked_job':
+            return serializers.AuthenticatedJobSerializer
+
+        if self.action == 'partial_update_rating':
+            return serializers.RatingSerializer
+        if self.action == 'list_apply':
+            return serializers.JobApplicationStatusSerializer
+
+        if self.action == 'partial_update_application':
+            return serializers.JobApplicationStatusSerializer
+
+        return self.serializer_class
 
     # Không endpoint
     # Tìm kiếm các bài đăng theo tiêu đề: /job/?title=example_title
@@ -199,15 +244,14 @@ class JobViewSet(viewsets.ModelViewSet):
         # Code xử lý lọc dữ liệu ở đây
         queries = self.queryset.order_by('-id')
 
-        # Lọc các bài đăng tuyển dụng đã hết thời hạn
-        for q in queries:
-            if q.deadline <= timezone.now().date():
-                q.active = False
-                q.save()
-            queries = queries.filter(active=True)
+        # LỌC CÁC BÀI ĐĂNG ĐÃ HẾT HẠN
+        # for q in queries:
+        #     if q.deadline <= timezone.now().date():
+        #         q.active = False
+        #         q.save()
+        #     queries = queries.filter(active=True)
 
         # Kiểm tra nếu hành động là 'list' (tức là yêu cầu danh sách các bài đăng)
-
 
         if self.action == 'list':
             title = self.request.query_params.get('title')
@@ -238,10 +282,7 @@ class JobViewSet(viewsets.ModelViewSet):
 
         return queries
 
-    # Ghi đè lại hàm tạo job
-    @swagger_auto_schema(
-        request_body= job_posting_schema
-    )
+    # Ghi đè lại hàm TẠO JOB
     def create(self, request, *args, **kwargs):
 
         # Lấy toàn bộ dữ liệu từ request.data
@@ -282,6 +323,18 @@ class JobViewSet(viewsets.ModelViewSet):
 
         serializer = self.get_serializer(queryset, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
+
+    # API cập nhật active bài tuyển dụng => dùng để ẩn bài tuyển dụng
+    @action(detail=True, methods=['patch'])
+    def toggle_active(self, request, pk=None):
+        job = get_object_or_404(Job, pk=pk)
+        if job.company == request.user.company:
+            job.active = not job.active
+            job.save()
+            serializer = JobSerializer(job)
+            return Response({'status': 'success', 'data': serializer.data})
+        else:
+            return Response({'status': 'error', 'message': 'Unauthorized'}, status=403)
 
     # API xem danh sách bài đăng tuyển dụng phổ biến (được apply nhiều) (giảm dần theo số lượng apply)
     # /recruitments_post/popular/
@@ -329,14 +382,13 @@ class JobViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['get'])
     def list_apply(self, request, pk=None):
         try:
-            applications = dao.recruiment_posts_apply_by_ID(pk)
-            paginator = JobApplicationPagination()
-            result_page = paginator.paginate_queryset(applications, request)
-            serializer = JobApplicationStatusSerializer(result_page, many=True)
-            return paginator.get_paginated_response(serializer.data)
+            job = Job.objects.get(pk=pk)
         except Job.DoesNotExist:
-            return Response({"detail": "No Job matches the given query."}, status=status.HTTP_404_NOT_FOUND)
+            return Response({"detail": "Job not found."}, status=status.HTTP_404_NOT_FOUND)
 
+        job_applications = JobApplication.objects.filter(job=job)
+        serializer = JobApplicationSerializer(job_applications, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
     # API xem chi tiết một đơn ứng tuyển của một bài đăng tuyển dụng
     # /jobs/<pk>/applications/<application_id>/
@@ -392,20 +444,6 @@ class JobViewSet(viewsets.ModelViewSet):
             return Response({'liked': False}, status=status.HTTP_200_OK)
         return Response({'liked': True }, status=status.HTTP_200_OK)
 
-    # Viết API đếm xem mỗi bài đăng có bao nhiêu lượt like, dựa trên ID bài đăng (do người dùng nhập)
-    # /jobs/<pk>/count_likes/
-    @action(detail=True, methods=['get'])
-    def count_likes(self, request, pk=None):
-        try:
-            # Lấy bài đăng tuyển dụng từ pk (primary key)
-            recruitment_post = Job.objects.get(pk=pk)
-            # Đếm số lượt like của bài đăng
-            num_likes = recruitment_post.like_set.count()
-            # Trả về kết quả
-            return Response({"count_likes": num_likes}, status=status.HTTP_200_OK)
-        except Job.DoesNotExist:
-            return Response({"error": "Recruitment post not found."}, status=status.HTTP_404_NOT_FOUND)
-
 
     # API lấy danh sách các bài yêu thích của user
     @action(methods=['get'], detail=False)
@@ -424,73 +462,20 @@ class JobViewSet(viewsets.ModelViewSet):
             return Response({"error": "Job not found."}, status=status.HTTP_404_NOT_FOUND)
 
 
-    # Viết API xem bài đăng tuyển được yêu thích nhất (dùng first)
-    # /jobs/most_liked_post/
-    @action(detail=False, methods=['get'])
-    def most_liked_job(self, request):
-        try:
-            most_liked_post = dao.recruiment_posts_most_like_first_by_ID()
-            # Serialize bài đăng được yêu thích nhất
-            serializer = serializers.JobSerializer(most_liked_post)
-            # Trả về kết quả
-            return Response(serializer.data, status=status.HTTP_200_OK)
-        except Job.DoesNotExist:
-            return Response({"error": "No Job found."}, status=status.HTTP_404_NOT_FOUND)
-
     # Viết API ẩn bài đăng tuyển dựa theo ID (người dùng nhập)
     # /jobs/<pk>/hide_post/
-    @action(detail=True, methods=['post'])
-    def hide_job(self, request, pk=None):
-        try:
-            post = Job.objects.get(pk=pk)
-            if request.method == 'POST':
-                post.active = False
-                post.save()
-                return Response({"message": "Job hidden successfully."}, status=status.HTTP_200_OK)
-            else:
-                return Response({"error": "Method not allowed."}, status=status.HTTP_405_METHOD_NOT_ALLOWED)
-        except Job.DoesNotExist:
-            return Response({"error": "Job not found."}, status=status.HTTP_404_NOT_FOUND)
-
-    # Viết API xem bài đăng tuyển mới nhất
-    # /jobs/newest/
-    @action(detail=False, methods=['get'])
-    def newest(self, request):
-        try:
-            # Lấy bài đăng tuyển mới nhất bằng cách sắp xếp theo trường created_date giảm dần và lấy bài đăng đầu tiên
-            newest_job = Job.objects.order_by('-created_date').first()
-            serializer = self.get_serializer(newest_job)
-            return Response(serializer.data, status=status.HTTP_200_OK)
-        except Job.DoesNotExist:
-            return Response({"error": "No recruitment post found."}, status=status.HTTP_404_NOT_FOUND)
-
-    # API báo cáo bài đăng tuyển dụng
-    # /jobs/<pk>/report/
-    @action(detail=True, methods=['post'])
-    def report(self, request, pk=None):
-        try:
-            # Lấy bài đăng tuyển dụng từ pk (primary key)
-            job = Job.objects.get(pk=pk)
-            # Đánh dấu bài đăng tuyển dụng đã được báo cáo
-            job.reported = True
-            job.save()
-            return Response({"message": "Job reported successfully."}, status=status.HTTP_200_OK)
-        except Job.DoesNotExist:
-            return Response({"error": "Job not found."}, status=status.HTTP_404_NOT_FOUND)
-
-    # API xem danh sách các bài đăng tuyển dụng bị report
-    # Endpoint: /jobs/list_report/
-    @action(detail=False, methods=['get'])
-    def list_report(self, request):
-        try:
-            # Lấy danh sách các bài đăng tuyển dụng bị report
-            reported_job = Job.objects.filter(reported=True)
-            # Serialize danh sách các bài đăng tuyển dụng
-            serializer = JobSerializer(reported_job, many=True)
-            # Trả về danh sách các bài đăng tuyển dụng dưới dạng JSON
-            return Response(serializer.data, status=status.HTTP_200_OK)
-        except Job.DoesNotExist:
-            return Response({"error": "No reported jobs found."}, status=status.HTTP_404_NOT_FOUND)
+    # @action(detail=True, methods=['post'])
+    # def hide_job(self, request, pk=None):
+    #     try:
+    #         post = Job.objects.get(pk=pk)
+    #         if request.method == 'POST':
+    #             post.active = False
+    #             post.save()
+    #             return Response({"message": "Job hidden successfully."}, status=status.HTTP_200_OK)
+    #         else:
+    #             return Response({"error": "Method not allowed."}, status=status.HTTP_405_METHOD_NOT_ALLOWED)
+    #     except Job.DoesNotExist:
+    #         return Response({"error": "Job not found."}, status=status.HTTP_404_NOT_FOUND)
 
 
     # API ứng tuyển vào một bài đăng tuyển dụng
@@ -542,14 +527,20 @@ class JobViewSet(viewsets.ModelViewSet):
                 return Response({"error": "Job application does not belong to this Job."},
                                 status=status.HTTP_400_BAD_REQUEST)
 
-            # Kiểm tra quyền chỉnh sửa đơn ứng tuyển: Người viết ứng tuyển và admin mới được cập nhật
-            if not request.user.is_staff and request.user != application.jobseeker.user:
+            # Kiểm tra quyền chỉnh sửa đơn ứng tuyển: Nhà tuyển dụng và admin mới được cập nhật
+            # if not request.user.is_staff and request.user != application.company:
+            if not (request.user.is_staff or request.user == job.company.user):
                 return Response({"error": "You do not have permission to update this job application."},
                                 status=status.HTTP_403_FORBIDDEN)
 
-            # Cập nhật một phần của đơn ứng tuyển
+             # Cập nhật một phần của đơn ứng tuyển
             for k, v in request.data.items():
-                setattr(application, k, v)  # Thay vì viết application.key  = value
+                if k == "status":
+                    # Giả sử v là tên của trạng thái, tìm đối tượng Status tương ứng
+                    status_instance = get_object_or_404(Status, role=v)
+                    setattr(application, k, status_instance)
+                else:
+                    setattr(application, k, v)
             application.save()
 
             return Response(serializers.JobApplicationSerializer(application).data, status=status.HTTP_200_OK)
@@ -558,6 +549,7 @@ class JobViewSet(viewsets.ModelViewSet):
             return Response({"error": "Job not found."}, status=status.HTTP_404_NOT_FOUND)
         except JobApplication.DoesNotExist:
             return Response({"error": "Job application not found."}, status=status.HTTP_404_NOT_FOUND)
+
 
     # API xóa đơn ứng tuyển vào bài đăng tuyển dụng
     # /jobs/{pk}/applications/{application_id}/delete/
@@ -590,14 +582,6 @@ class JobViewSet(viewsets.ModelViewSet):
         except JobApplication.DoesNotExist:
             return Response({"error": "Job application not found."}, status=status.HTTP_404_NOT_FOUND)
 
-    def get_serializer_class(self):
-        if self.action == 'create_rating':
-            return serializers.RatingSerializer
-
-        if self.action == 'get_liked_job':
-            return serializers.AuthenticatedJobSerializer
-
-        return self.serializer_class
 
     # API đánh giá một bài tuyển dụng
     # /jobs/<pk>/ratings/
@@ -623,20 +607,20 @@ class JobViewSet(viewsets.ModelViewSet):
 
             elif request.method == 'POST':
                 # Tạo một đánh giá mới
-                user = getattr(request.user, 'jobseeker', None) or getattr(request.user, 'company', None)
+                user = getattr(request.user, 'jobseeker', None)
                 if user:
                     rating = Rating.objects.create(
                         job=job,
                         rating=request.data.get('rating'),
                         comment=request.data.get('comment'),
-                        **{user.__class__.__name__.lower(): user} # UNPACK để tạo keyword
+                        jobseeker=jobseeker
                     )
                     serializer = RatingSerializer(rating)
-                    # Trả về thông tin về reply comment mới được tạo
                     return Response(serializer.data, status=status.HTTP_201_CREATED)
                 else:
-                    return Response({"error": "User is not an applicant or employer."},
-                                    status=status.HTTP_400_BAD_REQUEST)
+                    # Nếu không phải JobSeeker, trả về lỗi
+                    return Response({"error": "User is not authorized to create a rating."},
+                                    status=status.HTTP_403_FORBIDDEN)
 
         except Job.DoesNotExist:
             return Response({"error": "Job not found."}, status=status.HTTP_404_NOT_FOUND)
@@ -646,31 +630,29 @@ class JobViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['patch'], url_path='ratings/(?P<rating_id>\d+)/partial-update')
     def partial_update_rating(self, request, pk=None, rating_id=None):
         try:
-            # Lấy bài đăng tuyển dụng từ pk
-            job = get_object_or_404(Job, pk=pk)
-            # Lấy comment từ comment_id
-            rating = get_object_or_404(Rating, pk=rating_id)
-            # Kiểm tra xem comment có thuộc về bài đăng tuyển dụng không
-            if rating.job != job:
+            job = get_object_or_404(Job, pk=pk)# Lấy bài đăng tuyển dụng từ pk
+            rating = get_object_or_404(Rating, pk=rating_id)# Lấy comment từ comment_id
+            if rating.job != job:   # Kiểm tra xem comment có thuộc về bài đăng tuyển dụng không
                 return Response({"error": "Rating does not belong to this job."},
                                 status=status.HTTP_400_BAD_REQUEST)
             # Kiểm tra quyền chỉnh sửa Rating: chỉ người tạo mới được chỉnh sửa, admin cũng không được cập nhật
             user = getattr(request.user, 'jobseeker', None) or getattr(request.user, 'company', None)
             if user != rating.jobseeker and user != rating.company:
                 return Response({"error": "You do not have permission to delete this rating."},
-                                status=status.HTTP_403_FORBIDDEN)
+                            status=status.HTTP_403_FORBIDDEN)
 
-            # Cập nhật một phần của rating
-            for key, value in request.data.items():
-                setattr(rating, key, value)
-            rating.save()
             # Serialize và trả về thông tin cập nhật của rating
-            serializer = RatingSerializer(rating)
-            return Response(serializer.data, status=status.HTTP_200_OK)
+            serializer = RatingSerializer(rating, data=request.data, partial=True)
+            if serializer.is_valid():
+                serializer.save()
+                return Response(serializer.data, status=status.HTTP_200_OK)
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
         except Job.DoesNotExist:
             return Response({"error": "Job not found."}, status=status.HTTP_404_NOT_FOUND)
         except Rating.DoesNotExist:
             return Response({"error": "Rating not found."}, status=status.HTTP_404_NOT_FOUND)
+
 
     # API xóa rating của một bài đăng tuyển dụng
     # /jobs/<pk>/ratings/<rating_id>/delete/
@@ -706,9 +688,39 @@ class JobViewSet(viewsets.ModelViewSet):
             return Response({"error": "Rating not found."}, status=status.HTTP_404_NOT_FOUND)
 
 
+    # API xóa rating trong bài đăng tuyển dụng => Xóa luôn các comment là con
+    # /jobs/<pk>/rating/<rating_id>/delete/
+    # @action(detail=True, methods=['delete'], url_path='rating/(?P<rating_id>\\d+)/delete', url_name='delete_rating')
+    # def delete_rating(self, request, pk=None, rating_id=None):
+    #     try:
+    #         job = get_object_or_404(Job, pk=pk)
+    #         rating = get_object_or_404(Rating, pk=rating_id)
+
+    #         if rating.job != job:
+    #             return Response({"error": "Rating does not belong to this job."},
+    #                             status=status.HTTP_400_BAD_REQUEST)
+
+    #         user = getattr(request.user, 'jobseeker', None) or getattr(request.user, 'company', None)
+    #         if user != rating.jobseeker and user != rating.company and not request.user.is_staff:
+    #             return Response({"error": "You do not have permission to delete this rating."},
+    #                             status=status.HTTP_403_FORBIDDEN)
+
+    #         rating.delete()
+    #         return Response({"message": "Rating deleted successfully."}, status=status.HTTP_204_NO_CONTENT)
+
+    #     except Job.DoesNotExist:
+    #         return Response({"error": "Job not found."}, status=status.HTTP_404_NOT_FOUND)
+    #     except Rating.DoesNotExist:
+    #         return Response({"error": "Rating not found."}, status=status.HTTP_404_NOT_FOUND)
+
+
+
 class UserViewSet(viewsets.ViewSet, generics.CreateAPIView, generics.ListAPIView):
     queryset = User.objects.filter(is_active=True).all()
     serializer_class = serializers.UserSerializer
+    # Dùng upload ảnh lên Cloud
+    # parser_classes = [parsers.MultiPartParser, ]
+    permission_classes = [IsAuthenticated]  # Chỉ cho phép truy cập khi đã đăng nhập
 
     def get_serializer_class(self):
         if self.action == 'create_applicant':
@@ -721,6 +733,7 @@ class UserViewSet(viewsets.ViewSet, generics.CreateAPIView, generics.ListAPIView
         return self.serializer_class
 
 
+
     # API xem chi tiết tài khoản hiện (chỉ xem được của mình) + cập nhật tài khoản (của mình)
     # /users/current-user/
     @action(methods=['get'], url_path='current-user', detail=False)
@@ -728,6 +741,11 @@ class UserViewSet(viewsets.ViewSet, generics.CreateAPIView, generics.ListAPIView
         # Đã được chứng thực rồi thì không cần truy vấn nữa => Xác định đây là người dùng luôn
         # user = user hiện đang đăng nhập
         user = request.user
+        if user.is_authenticated:
+            return Response(serializers.UserDetailSerializer(user).data)
+        else:
+            return Response({'error': 'User is not authenticated'}, status=status.HTTP_401_UNAUTHORIZED)
+
         return Response(serializers.UserDetailSerializer(user).data)
 
     # API cập nhật một phần cho User
@@ -777,6 +795,11 @@ class UserViewSet(viewsets.ViewSet, generics.CreateAPIView, generics.ListAPIView
 
         serializer = serializers.JobSeekerCreateSerializer(data=request.data)
         if serializer.is_valid():
+        #     serializer.save(user=user)
+        #     return Response(serializer.data, status=status.HTTP_201_CREATED)
+        # else:
+        #     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
             job_seeker = serializer.save(user=user)
 
         # Trả về dữ liệu với skills và areas
@@ -812,13 +835,14 @@ class CompanyViewSet(viewsets.ViewSet, generics.ListAPIView, generics.RetrieveAP
     def get_serializer_class(self):
         if self.action == 'get_list_job':
             return serializers.JobSerializer
+        if self.action == 'list_applications':
+            return JobApplicationStatusSerializer
         else:
             return serializers.CompanySerializer
 
     # Tạo mới Employer
     def create(self, request, *args, **kwargs):
         user = request.user
-
         if user.role == 1:
             serializer = self.get_serializer(data=request.data)
             serializer.is_valid(raise_exception=True)
@@ -827,7 +851,24 @@ class CompanyViewSet(viewsets.ViewSet, generics.ListAPIView, generics.RetrieveAP
         else:
             return Response({'detail': 'User is not a verified company.'}, status=status.HTTP_403_FORBIDDEN)
 
-    # API xem danh sách các bài ứng tuyển mà user đó đã đăng (khi user là 1 employer)
+    # API lấy danh sách đơn ứng tuyển vào các job của NTD tạo ra
+    @action(detail=False, methods=['get'])
+    def list_applications(self, request):
+        user = request.user
+        if not hasattr(user, 'company'):  # Nếu không phải là công ty
+            return Response({'detail': 'User is not  an Employer'}, status=status.HTTP_403_FORBIDDEN)
+
+        # Lấy công ty của người dùng
+        company = user.company
+        # Lấy tất cả các công việc của công ty
+        jobs = Job.objects.filter(company=company)
+        # Lấy tất cả các ứng viên ứng tuyển vào các công việc của công ty
+        applications = JobApplication.objects.filter(job__in=jobs)
+        serializer = self.get_serializer(applications, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+    # API xem danh sách các bài tuyển dụng mà user đó đã đăng (khi user là 1 employer)
     @action(methods=['get'], detail=False, url_path='list_job')
     def get_list_job(self, request, pk=None):
         user = request.user
@@ -836,9 +877,10 @@ class CompanyViewSet(viewsets.ViewSet, generics.ListAPIView, generics.RetrieveAP
         if not hasattr(user, 'company'):
             return Response({'error': 'User is not an Employer'}, status=status.HTTP_400_BAD_REQUEST)
 
-        jobs = Job.objects.filter(company__user=user, active=True)
+        jobs = Job.objects.filter(company__user=user)
         serializer = JobSerializer(jobs, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
+
 
 
 class JobSeekerViewSet(viewsets.ViewSet, generics.ListAPIView, generics.RetrieveAPIView, generics.UpdateAPIView):
@@ -924,7 +966,7 @@ class JobSeekerViewSet(viewsets.ViewSet, generics.ListAPIView, generics.Retrieve
         if not hasattr(user, 'jobseeker'):
             return Response({'error': 'User is not an Job Seeker'}, status=status.HTTP_400_BAD_REQUEST)
 
-        jobapplications = JobApplication.objects.filter(jobseeker__user=user, active=True)
+        jobapplications = JobApplication.objects.filter(jobseeker__user=user, job__active=True)
         serializer = JobApplicationStatusSerializer(jobapplications, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
@@ -947,165 +989,3 @@ class AreaViewSet(viewsets.ViewSet, generics.ListAPIView, generics.RetrieveAPIVi
 class SkillViewSet(viewsets.ViewSet, generics.ListAPIView, generics.RetrieveAPIView):
     queryset = Skill.objects.all()
     serializer_class = serializers.SkillSerializer
-
-
-  # API reply commment trong một bài tuyển dụng nhất định
-    # /jobs/<pk>/comments/<comment_pk>/reply_comment/
-    # @action(detail=True, methods=['get', 'post'], url_path='comments/(?P<comment_pk>\d+)/reply_comment',
-    #         url_name='reply_comment')
-    # def reply_comment(self, request, pk=None, comment_pk=None):
-    #     try:
-    #         # Lấy bài đăng tuyển dụng từ pk
-    #         job = get_object_or_404(Job, pk=pk)
-    #         # Lấy comment cha từ comment_pk
-    #         parent_comment = get_object_or_404(Comment, pk=comment_pk)
-    #
-    #         if request.method == 'GET':
-    #             # Lấy danh sách các reply comment cho comment cha
-    #             replies = parent_comment.replies.all()
-    #             # Phân trang danh sách reply comment
-    #             paginator = paginators.CommentReplyPaginator()
-    #             paginated_replies = paginator.paginate_queryset(replies, request)
-    #             # Serialize danh sách reply comment
-    #             serializer = CommentSerializer(paginated_replies, many=True)
-    #             # Trả về danh sách comment đã phân trang
-    #             return paginator.get_paginated_response(serializer.data)
-    #
-    #         elif request.method == 'POST':
-    #             user = getattr(request.user, 'jobseeker', None) or getattr(request.user, 'company', None)
-    #             if user:
-    #                 reply_comment = Comment.objects.create(
-    #                     job=job,
-    #                     content=request.data.get('content'),
-    #                     parent=parent_comment,
-    #                     **{user.__class__.__name__.lower(): user}  # UNPACK để tạo keyword
-    #                 )
-    #                 serializer = CommentSerializer(reply_comment)
-    #                 # Trả về thông tin về reply comment mới được tạo
-    #                 return Response(serializer.data, status=status.HTTP_201_CREATED)
-    #             else:
-    #                 return Response({"error": "User is not an applicant or employer."},
-    #                                 status=status.HTTP_400_BAD_REQUEST)
-    #
-    #     except Job.DoesNotExist:
-    #         return Response({"error": "Job not found."}, status=status.HTTP_404_NOT_FOUND)
-    #     except Comment.DoesNotExist:
-    #         return Response({"error": "Comment not found."}, status=status.HTTP_404_NOT_FOUND)
-    #
-    # # API xóa comment trong bài đăng tuyển dụng => Xóa luôn các comment là con
-    # # /jobs/<pk>/comments/<comment_id>/delete/
-    # @action(detail=True, methods=['delete'], url_path='comments/(?P<comment_id>\\d+)/delete', url_name='delete_comment')
-    # def delete_comment(self, request, pk=None, comment_id=None):
-    #     try:
-    #         job = get_object_or_404(Job, pk=pk)
-    #         comment = get_object_or_404(Comment, pk=comment_id)
-    #
-    #         if comment.job != job:
-    #             return Response({"error": "Comment does not belong to this job."},
-    #                             status=status.HTTP_400_BAD_REQUEST)
-    #
-    #         user = getattr(request.user, 'jobseeker', None) or getattr(request.user, 'company', None)
-    #         if user != comment.jobseeker and user != comment.company and not request.user.is_staff:
-    #             return Response({"error": "You do not have permission to delete this comment."},
-    #                             status=status.HTTP_403_FORBIDDEN)
-    #
-    #         comment.delete()
-    #         return Response({"message": "Comment deleted successfully."}, status=status.HTTP_204_NO_CONTENT)
-    #
-    #     except Job.DoesNotExist:
-    #         return Response({"error": "Job not found."}, status=status.HTTP_404_NOT_FOUND)
-    #     except Comment.DoesNotExist:
-    #         return Response({"error": "Comment not found."}, status=status.HTTP_404_NOT_FOUND)
-    #
-    # # API xóa comment reply trong bài đăng tuyển dụng
-    # # /jobs/<pk>/comments/<comment_id>/replies/<reply_id>/delete/
-    # @action(detail=True, methods=['delete'], url_path='comments/(?P<comment_id>\d+)/replies/(?P<reply_id>\d+)/delete',
-    #         url_name='delete_reply')
-    # def delete_reply(self, request, pk=None, comment_id=None, reply_id=None):
-    #     try:
-    #         job = get_object_or_404(Job, pk=pk)
-    #         comment = get_object_or_404(Comment, pk=comment_id)
-    #         reply = get_object_or_404(Comment, pk=reply_id, parent=comment)
-    #
-    #         if comment.job != job:
-    #             return Response({"error": "Comment does not belong to this recruitment post."},
-    #                             status=status.HTTP_400_BAD_REQUEST)
-    #
-    #         user = getattr(request.user, 'jobseeker', None) or getattr(request.user, 'company', None)
-    #         if user != reply.jobseeker and user != reply.company and not request.user.is_staff:
-    #             return Response({"error": "You do not have permission to delete this reply."},
-    #                             status=status.HTTP_403_FORBIDDEN)
-    #
-    #         reply.delete()
-    #         return Response({"message": "Reply deleted successfully."}, status=status.HTTP_204_NO_CONTENT)
-    #
-    #     except Job.DoesNotExist:
-    #         return Response({"error": "Job not found."}, status=status.HTTP_404_NOT_FOUND)
-    #     except Comment.DoesNotExist:
-    #         return Response({"error": "Comment or reply not found."}, status=status.HTTP_404_NOT_FOUND)
-    #
-    # # API cập nhật một phần comment trong bài đăng tuyển dụng
-    # # /recruitments_post/{pk}/comments/{comment_id}/partial-update/
-    # @action(detail=True, methods=['patch'], url_path='comments/(?P<comment_id>\d+)/partial-update',
-    #         url_name='partial_update_comment')
-    # def partial_update_comment(self, request, pk=None, comment_id=None):
-    #     try:
-    #         # Lấy bài đăng tuyển dụng từ pk
-    #         job = get_object_or_404(Job, pk=pk)
-    #
-    #         # Lấy comment từ comment_id
-    #         comment = get_object_or_404(Comment, pk=comment_id)
-    #
-    #         # Kiểm tra xem comment có thuộc về bài đăng tuyển dụng không
-    #         if comment.job != job:
-    #             return Response({"error": "Comment does not belong to this job."},
-    #                             status=status.HTTP_400_BAD_REQUEST)
-    #
-    #         user = getattr(request.user, 'jobseeker', None) or getattr(request.user, 'company', None)
-    #         if user != comment.jobseeker and user != comment.company:
-    #             return Response({"error": "You do not have permission to delete this comment."},
-    #                             status=status.HTTP_403_FORBIDDEN)
-    #
-    #         # Cập nhật một phần của comment
-    #         for key, value in request.data.items():
-    #             setattr(comment, key, value)
-    #         comment.save()
-    #
-    #         return Response(CommentSerializer(comment).data, status=status.HTTP_200_OK)
-    #
-    #     except Job.DoesNotExist:
-    #         return Response({"error": "Job not found."}, status=status.HTTP_404_NOT_FOUND)
-    #     except Comment.DoesNotExist:
-    #         return Response({"error": "Comment not found."}, status=status.HTTP_404_NOT_FOUND)
-    #
-    # # API cập nhật một phần comment reply trong bài đăng tuyển dụng
-    # # /recruitments_post/<pk>/comments/<comment_id>/replies/<reply_id>/partial-update/
-    # @action(detail=True, methods=['patch'],
-    #         url_path='comments/(?P<comment_id>\d+)/replies/(?P<reply_id>\d+)/partial-update',
-    #         url_name='partial_update_reply')
-    # def partial_update_reply(self, request, pk=None, comment_id=None, reply_id=None):
-    #     try:
-    #         job = get_object_or_404(Job, pk=pk)
-    #         comment = get_object_or_404(Comment, pk=comment_id)
-    #         reply = get_object_or_404(Comment, pk=reply_id, parent=comment)
-    #
-    #         if comment.job != job:
-    #             return Response({"error": "Comment does not belong to this job."},
-    #                             status=status.HTTP_400_BAD_REQUEST)
-    #
-    #         user = getattr(request.user, 'jobseeker', None) or getattr(request.user, 'company', None)
-    #         if user != reply.jobseeker and user != reply.company:
-    #             return Response({"error": "You do not have permission to update this reply."},
-    #                             status=status.HTTP_403_FORBIDDEN)
-    #
-    #         for key, value in request.data.items():
-    #             setattr(reply, key, value)
-    #         reply.save()
-    #
-    #         return Response({"message": "Reply updated successfully."}, status=status.HTTP_200_OK)
-    #
-    #     except Job.DoesNotExist:
-    #         return Response({"error": "Job not found."}, status=status.HTTP_404_NOT_FOUND)
-    #     except Comment.DoesNotExist:
-    #         return Response({"error": "Comment or reply not found."}, status=status.HTTP_404_NOT_FOUND)
-    #

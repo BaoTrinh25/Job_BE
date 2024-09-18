@@ -1,8 +1,8 @@
 from rest_framework import routers
-from jobs import views
+from . import views
 from django.urls import path, include
-from .views import refresh_token, login, logout
-from .views import google_login
+from .views import StripeCheckoutViewSet
+
 
 # Tạo đối tượng
 router = routers.DefaultRouter()
@@ -22,14 +22,12 @@ router.register('skills', views.SkillViewSet, basename='skills')
 
 
 
+
 urlpatterns = [
     path('', include(router.urls)),
-    path('refresh_token/', refresh_token, name='refresh_token'),
-    # path('login/', login, name='login'),
-    # path('logout/', logout, name='logout'),
-    path('auth_google', google_login, name='google_login'),
-
-    # Phần OAuth2
-    # path('o/', include('oauth2_provider.urls', namespace='oauth2_provider')),
+    path('payment_stripe/payment/', StripeCheckoutViewSet.as_view({'post': 'create'}), name='create_invoice'),
+    path('payment_stripe/<str:session_id>/', StripeCheckoutViewSet.as_view({'get': 'retrieve'}), name='get_invoice'),
+    path('invoices/', StripeCheckoutViewSet.as_view({'get': 'list'}), name='list_invoices'),
+    # path('payment_stripe/payment_success/', StripeCheckoutViewSet.as_view({'get': 'payment_success'}), name='payment_success'),
 
 ]

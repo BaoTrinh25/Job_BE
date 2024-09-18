@@ -189,8 +189,6 @@ def count_applicants_with_high_salary_expectation():
     return applicants_with_high_salary_expectation
 
 
-
-
 # Đếm số lượng bài đăng tuyển dụng có vị trí là "Nhân viên kinh doanh"
 def count_recruitment_posts_with_sales_position():
     recruitment_posts_with_sales_position = Job.objects.filter(
