@@ -1,5 +1,3 @@
-from venv import create
-
 import debug_toolbar
 from django.contrib import admin
 from django.urls import path, include, re_path
@@ -9,18 +7,16 @@ from drf_yasg.views import get_schema_view
 from rest_framework import permissions
 from drf_yasg import openapi
 
-from jobs.views import StripeCheckoutViewSet
-
 # from jobs.views import MyTokenView
 
 # Phần tích hợp Swagger
 schema_view = get_schema_view(
     openapi.Info(
-        title="DTT API",
+        title="NakoJob API",
         default_version='v1',
-        description="APIs for DTTApp",
-        contact=openapi.Contact(email="DTT@gmail.com"),
-        license=openapi.License(name="Trần Nguyễn Lê DTT"),
+        description="APIs for NakoJobApp",
+        contact=openapi.Contact(email="nakojob@gmail.com"),
+        license=openapi.License(name="baotrinh"),
     ),
     public=True,
     # Cấu hình quyền được xem, AllowAny là tất cả mọi người đều được xem
@@ -31,11 +27,15 @@ schema_view = get_schema_view(
 
 urlpatterns = [
     path('', include('jobs.urls')),
+    # Phần custom lại
     path('myadmin/', my_admin_site.urls),
     # Phần Debug Toolbar
     path('__debug__/', include(debug_toolbar.urls)),
     # Phần của CKEditor
     re_path(r'^ckeditor/', include('ckeditor_uploader.urls')),
+
+    # path('o/token/', MyTokenView.as_view(), name='token'),
+
     # Phần tích hợp Swagger
     re_path(r'^swagger(?P<format>\.json|\.yaml)$',
             schema_view.without_ui(cache_timeout=0),

@@ -1,7 +1,6 @@
 from rest_framework import serializers
 from jobs.models import (User, JobSeeker, Skill, Area, Career, EmploymentType, Company, Status, Job, Invoice,
-                         Rating, JobApplication, Notification, Like)
-from django.core.exceptions import ValidationError
+                         Rating, JobApplication, Like)
 from django.contrib.auth import get_user_model
 from .models import COMPANY_CHOICES
 from django.utils.html import strip_tags #loại bỏ thẻ html bên trong richtextfield
@@ -9,21 +8,12 @@ from django.utils.html import strip_tags #loại bỏ thẻ html bên trong rich
 
 User = get_user_model()
 
-# class AvatarSerializer(serializers.ModelSerializer):
-
-#   def to_representation(self, instance):
-#         req = super().to_representation(instance)
-#         req['image'] = instance.image.url
-#         return req
-
 
 class InvoiceSerializer(serializers.ModelSerializer):
     class Meta:
         model = Invoice
         fields = ['id', 'stripe_session_id', 'amount_total', 'currency', 'payment_status', 'payment_date', 'customer_email']
         read_only_fields = ['id', 'payment_date', 'user']
-
-
 
 class SkillSerializer(serializers.ModelSerializer):
     class Meta:
@@ -227,12 +217,15 @@ class CompanyCreateSerializer(serializers.ModelSerializer):
 
 
 class JobSerializer(serializers.ModelSerializer):
-    company = CompanySerializer()
     career = CareerSerializer()
     employmenttype = EmploymentTypeSerializer()
     area = AreaSerializer()
     created_date = serializers.SerializerMethodField()
     deadline = serializers.DateField(format="%d/%m/%Y", input_formats=["%d/%m/%Y"])
+    user = serializers.SerializerMethodField()
+
+    def get_user(self, obj):
+        return UserDetailSerializer(obj.company.user).data
 
     # Tạo đường dẫn tuyệt đối cho trường image (image upload lên Cloudinary)
     def to_representation(self, instance):
@@ -280,7 +273,7 @@ class JobSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Job
-        fields = ['id', 'company', 'image', 'career', 'employmenttype', 'area', 'title', 'deadline',
+        fields = ['id', 'user', 'company', 'image', 'career', 'employmenttype', 'area', 'title', 'deadline',
         'quantity', 'location', 'salary', 'description', 'experience', 'created_date', 'active']
 
 
@@ -390,11 +383,4 @@ class LikeSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Like
-        fields = '__all__'
-
-class NotificationSerializer(serializers.ModelSerializer):
-    user = UserSerializer()
-
-    class Meta:
-        model = Notification
         fields = '__all__'

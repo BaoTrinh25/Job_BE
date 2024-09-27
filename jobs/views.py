@@ -6,10 +6,10 @@ from rest_framework.response import Response
 from rest_framework import viewsets, generics, permissions, status
 from rest_framework.decorators import action
 from jobs import dao
-from .models import JobApplication, Company, JobSeeker, User, Notification, Like, Status, Invoice
+from .models import JobApplication, Company, JobSeeker, User, Like, Status, Invoice
 from .serializers import (JobApplicationSerializer, RatingSerializer, Career, EmploymentType, Area, JobSeekerCreateSerializer
                           ,AuthenticatedJobSerializer, LikeSerializer, JobSerializer, JobCreateSerializer,
-                          JobApplicationStatusSerializer, NotificationSerializer,Skill, SkillSerializer, AreaSerializer, InvoiceSerializer)
+                          JobApplicationStatusSerializer,Skill, SkillSerializer, AreaSerializer, InvoiceSerializer)
 from rest_framework.permissions import IsAuthenticated
 from django.shortcuts import get_object_or_404
 from .paginators import LikedJobPagination
@@ -43,6 +43,7 @@ from rest_framework.views import APIView
 
 
 
+
 #######      THANH TOÁN   ########
 stripe.api_key = settings.STRIPE_SECRET_KEY
 
@@ -50,10 +51,10 @@ class StripeCheckoutViewSet(viewsets.ViewSet):
     permission_classes = [IsAuthenticated]  # Chỉ cho phép người dùng đã xác thực
 
     def create(self, request):
-        """ THANH TOÁN """
         try:
             # Lấy price_id từ request body
             price_id = request.data.get('price_id')
+            product_item = request.data.get('product_item')
 
             if not price_id:
                 return Response({"error": "Price ID is required."}, status=status.HTTP_400_BAD_REQUEST)
@@ -62,21 +63,24 @@ class StripeCheckoutViewSet(viewsets.ViewSet):
             checkout_session = stripe.checkout.Session.create(
                 line_items=[
                     {
-                        'price': price_id,  # Dùng price_id từ yêu cầu
+                        'price': price_id,
                         'quantity': 1,
                     },
                 ],
                 payment_method_types=['card'],
                 mode='payment',
-                success_url=settings.SITE_URL + '/payment_success?success=true&session_id={CHECKOUT_SESSION_ID}',
+                success_url=settings.SITE_URL + '/payment_success?session_id={CHECKOUT_SESSION_ID}',
                 cancel_url=settings.SITE_URL + '?canceled=true',
             )
 
-             # Save the session to the database with a pending state
+            # Lưu session với trạng thái pending
             invoice = Invoice(
                 user=request.user,
                 stripe_session_id=checkout_session.id,
-                amount_total=0.00
+                amount_total=0.00,  # Tổng số tiền sẽ được cập nhật sau
+                currency='VNĐ',  # Bạn có thể điều chỉnh nếu cần
+                payment_status='pending',  # Trạng thái ban đầu là pending
+                product_item=product_item  # Lưu tên sản phẩm
             )
             invoice.save()
 
@@ -86,105 +90,73 @@ class StripeCheckoutViewSet(viewsets.ViewSet):
         except Exception as e:
             return Response({'error': 'Something went wrong: ' + str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-     # xem chi tiết hóa đơn
-    def retrieve(self, request, session_id=None, *args, **kwargs):  # Đảm bảo session_id được nhận từ tham số
-        """ CHI TIẾT HÓA ĐƠN """
+
+    def retrieve_payment(self, request):
+        session_id = request.GET.get('session_id')
+
+        if not session_id:
+            return Response({"error": "Session ID is required."}, status=status.HTTP_400_BAD_REQUEST)
+
         try:
-            # Tìm hóa đơn bằng stripe_session_id
-            invoice = Invoice.objects.get(stripe_session_id=session_id, user=request.user)
-            serializer = InvoiceSerializer(invoice)
-            return Response(serializer.data, status=status.HTTP_200_OK)
+            # Lấy thông tin session từ Stripe để cập nhật thông tin hóa đơn
+            checkout_session = stripe.checkout.Session.retrieve(session_id)
+
+            # Lấy hóa đơn từ database bằng session_id
+            invoice = Invoice.objects.get(stripe_session_id=session_id)
+
+            # Cập nhật thông tin thanh toán từ Stripe vào hóa đơn
+            invoice.amount_total = checkout_session.amount_total / 100  # Chuyển từ cents sang đơn vị tiền tệ
+            invoice.payment_status = checkout_session.payment_status
+            invoice.customer_email = checkout_session.customer_details.email
+            invoice.payment_date = timezone.now()  # Cập nhật thời gian thanh toán
+
+            # Lưu lại hóa đơn sau khi cập nhật
+            invoice.save()
+
+            # Chuyển thông tin hóa đơn thành định dạng JSON
+            invoice_data = {
+                "session_id": invoice.stripe_session_id,
+                "amount_total": str(invoice.amount_total),
+                "currency": invoice.currency,
+                "payment_status": invoice.payment_status,
+                "payment_date": invoice.payment_date,
+                "customer_email": invoice.customer_email,
+                "product_item": invoice.product_item,
+            }
+
+            return Response(invoice_data, status=status.HTTP_200_OK)
         except Invoice.DoesNotExist:
-            print(f"Session ID: {session_id}, User ID: {request.user.id}")  # Ghi lại thông tin
-            return Response({'error': 'Invoice not found.'}, status=status.HTTP_404_NOT_FOUND)
+            return Response({"error": "Invoice not found."}, status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
-            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
-    # danh sách hóa đơn
-    def list(self, request):
-        """ DANH SÁCH HÓA ĐƠN """
-        invoices = Invoice.objects.filter(user=request.user)
-        serializer = InvoiceSerializer(invoices, many=True)
-        return Response(serializer.data, status=status.HTTP_200_OK)
+    def list_invoices(self, request):
+        try:
+            # Lấy người dùng hiện tại từ request
+            user = request.user
 
+            # Lấy danh sách các hóa đơn của người dùng
+            invoices = Invoice.objects.filter(user=user)
 
-#     # CẬP NHẬT THÔNG TIN SAU THANH TOÁN
-#     @action(detail=False, methods=['get'], url_path='payment-success')
-#     def payment_success(self, request):
-#         """ CẬP NHẬT THÔNG TIN SAU THANH TOÁN """
-#         session_id = request.query_params.get('session_id')
+            # Chuyển đổi các hóa đơn thành dạng JSON để trả về
+            invoice_list = []
+            for invoice in invoices:
+                invoice_list.append({
+                    "session_id": invoice.stripe_session_id,
+                    "amount_total": str(invoice.amount_total),
+                    "currency": invoice.currency,
+                    "payment_status": invoice.payment_status,
+                    "payment_date": invoice.payment_date,
+                    "customer_email": invoice.customer_email,
+                    "product_item": invoice.product_item,
+                })
 
-#         if not session_id:
-#             return Response({"error": "Session ID is required."}, status=status.HTTP_400_BAD_REQUEST)
+            # Trả về danh sách hóa đơn dưới dạng JSON
+            return Response({"invoices": invoice_list}, status=status.HTTP_200_OK)
 
-#         try:
-#             # Lấy thông tin session từ Stripe
-#             session = stripe.checkout.Session.retrieve(session_id)
-
-#             if session.payment_status == 'paid':
-#                 # Tìm hóa đơn trong database dựa trên session_id
-#                 try:
-#                     invoice = Invoice.objects.get(stripe_session_id=session_id, user=request.user)
-#                 except Invoice.DoesNotExist:
-#                     return Response({"error": "Invoice not found."}, status=status.HTTP_404_NOT_FOUND)
-
-#                 # Cập nhật thông tin thanh toán
-#                 invoice.amount_total = session.amount_total / 100  # Số tiền trả về từ Stripe theo cent
-#                 invoice.currency = session.currency
-#                 invoice.payment_status = session.payment_status
-#                 invoice.payment_date = timezone.now()
-
-#                 # Lấy email khách hàng từ session nếu có
-#                 if session.customer_details:
-#                     invoice.customer_email = session.customer_details.email
-
-#                 invoice.save()
-
-#                 return Response({
-#                     "message": "Payment successful",
-#                     "invoice": {
-#                         "invoice_id": invoice.id,
-#                         "session_id": invoice.stripe_session_id,
-#                         "amount_total": invoice.amount_total,
-#                         "currency": invoice.currency,
-#                         "payment_status": invoice.payment_status,
-#                         "payment_date": invoice.payment_date,
-#                         "customer_email": invoice.customer_email,
-#                     }
-#                 }, status=status.HTTP_200_OK)
-
-#             else:
-#                 return Response({"error": "Payment not successful"}, status=status.HTTP_400_BAD_REQUEST)
-
-#         except stripe.error.StripeError as e:
-#             return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-#         except Exception as e:
-#             return Response({'error': 'Something went wrong: ' + str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-
-
-# class InvoiceView(APIView):
-#     def get(self, request, session_id):
-#         try:
-#             # Lấy session thanh toán từ Stripe bằng session_id
-#             checkout_session = stripe.checkout.Session.retrieve(session_id)
-
-#             # Lấy thông tin thanh toán từ PaymentIntent
-#             payment_intent = stripe.PaymentIntent.retrieve(checkout_session.payment_intent)
-
-#             # Trả về thông tin hóa đơn cho front-end
-#             return Response({
-#                 'id': payment_intent.id,
-#                 'customer_email': checkout_session.customer_details['email'],
-#                 'amount_total': payment_intent.amount / 100,  # Đơn vị từ cents sang tiền tệ
-#                 'currency': payment_intent.currency,  # Tiền tệ của thanh toán
-#                 'payment_status': payment_intent.status,
-#                 'payment_date': payment_intent.created,
-#             }, status=status.HTTP_200_OK)
-#         except Exception as e:
-#             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
-
+        except Exception as e:
+            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 class JobViewSet(viewsets.ModelViewSet):
@@ -613,7 +585,6 @@ class JobViewSet(viewsets.ModelViewSet):
                         job=job,
                         rating=request.data.get('rating'),
                         comment=request.data.get('comment'),
-                        jobseeker=jobseeker
                     )
                     serializer = RatingSerializer(rating)
                     return Response(serializer.data, status=status.HTTP_201_CREATED)
@@ -928,28 +899,6 @@ class JobSeekerViewSet(viewsets.ViewSet, generics.ListAPIView, generics.Retrieve
         if position:
             queryset = queryset.filter(position__icontains=position)
         return queryset
-
-
-    # API xem thông báo
-    # /applicants/notifications/
-    @action(detail=False, methods=['get'], url_path='notifications')
-    def get_notifications(self, request):
-        user = request.user
-
-        # Kiểm tra xem người dùng là admin hay không => admin thì xuất hết thông báo (sắp theo mới nhất)
-        if user.is_staff or user.is_superuser:
-            notifications = Notification.objects.all().order_by('-created_date')
-            serializer = NotificationSerializer(notifications, many=True)
-            return Response(serializer.data, status=status.HTTP_200_OK)
-
-        # Nếu không phải admin, kiểm tra xem là applicant hay không
-        if not hasattr(user, 'jobseeker'):
-            return Response({'error': 'User is not an Job Seeker'}, status=status.HTTP_400_BAD_REQUEST)
-
-        job_seeker = user.jobseeker
-        notifications = Notification.objects.filter(user=job_seeker.user).order_by('-created_date')  # (sắp theo mới nhất)
-        serializer = NotificationSerializer(notifications, many=True)
-        return Response(serializer.data, status=status.HTTP_200_OK)
 
     def get_serializer_class(self):
         if self.action == 'get_list_job_apply':

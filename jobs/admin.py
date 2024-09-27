@@ -3,8 +3,7 @@ from django.template.response import TemplateResponse
 from django.utils.html import format_html
 from django.utils.safestring import mark_safe
 from jobs.models import (User, Company, JobSeeker, Area, EmploymentType, Job, JobApplication, Status,
-                         Skill, Notification, UserNotification,
-                         Career, Rating, Like)
+                         Skill, Career, Rating, Like)
 from django import forms
 from ckeditor_uploader.widgets import CKEditorUploadingWidget
 import cloudinary
@@ -358,11 +357,9 @@ my_admin_site.register(Career, CareerAdmin),
 my_admin_site.register(Rating, RatingAdmin),
 my_admin_site.register(Permission),
 my_admin_site.register(Like, LikeAdmin),
-my_admin_site.register(Notification, NotificationAdmin)
 my_admin_site.register(AccessToken, AccessTokenAdmin),
 my_admin_site.register(Application, ApplicationAdmin),
 my_admin_site.register(IDToken, IDTokenAdmin),
 my_admin_site.register(Grant, GrantAdmin)
 my_admin_site.register(RefreshToken, RefreshTokenAdmin)
-my_admin_site.register(UserNotification, UserNotificationAdmin)
 

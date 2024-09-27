@@ -49,6 +49,29 @@ class User(AbstractUser):
         ordering = ['id']  # Sắp xếp theo thứ tự id tăng dần
 
 
+class Room(models.Model):
+    sender = models.ForeignKey(User, related_name='sender_rooms', on_delete=models.CASCADE, null=True, blank=True)
+    receiver = models.ForeignKey(User, related_name='receiver_rooms', on_delete=models.CASCADE, null=True,
+                                 blank=True)
+    created_at = models.DateTimeField(auto_now_add=True, null=True, blank=True)
+
+    class Meta:
+        # Đảm bảo mỗi cặp người dùng (sender, receiver) chỉ có một phòng chat.
+        unique_together = ('sender', 'receiver')
+
+    def __str__(self):
+        return f"ChatRoom between {self.sender.username} and {self.receiver.username}"
+
+class Message(models.Model):
+    message = models.TextField()
+    sender = models.ForeignKey(User, related_name='sent_messages', on_delete=models.CASCADE, null=True, blank=True)
+    room = models.ForeignKey(Room, related_name='messages', on_delete=models.CASCADE)
+    created_at = models.DateTimeField(auto_now_add=True, blank=True, null=True)
+
+    def __str__(self):
+        return f"Message from {self.sender.username} in room {self.room.id}"
+
+
 class Invoice(models.Model):
     # Một người dùng có thể có nhiều hóa đơn
     user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
@@ -61,7 +84,6 @@ class Invoice(models.Model):
 
     def __str__(self):
         return f"Invoice {self.stripe_session_id} - {self.user.username}"
-
 
 
 # Nhà tuyển dụng
@@ -109,7 +131,6 @@ class Job(BaseModel):
     career = models.ForeignKey('Career', on_delete=models.PROTECT, null=True)
     employmenttype = models.ForeignKey(EmploymentType, on_delete=models.PROTECT, null=True)
     area = models.ForeignKey('Area', models.RESTRICT, null=True)
-    # Tiêu đề
     title = models.CharField(max_length=255)
     deadline = models.DateField()
     quantity = models.IntegerField()    # Số nhân sự cần
@@ -119,6 +140,7 @@ class Job(BaseModel):
     position = models.CharField(max_length=255)   # Vị trí ứng tuyển
     description = models.TextField(null=True, blank=True)
     experience = models.CharField(max_length=255)
+    user = models.ForeignKey(User, on_delete=models.CASCADE, null=True)
 
     def __str__(self):
         return self.title
@@ -221,22 +243,3 @@ class Rating(Interaction):
         return f'Rating: {self.rating}, Content: {self.comment}'
 
 
-# Phần thông báo
-# Thông báo cho nhà tuyển dụng có người ứng tuyển
-# Thông báo cho người xin việc là đơn xin việc đã được chấp nhận
-class Notification(BaseModel):
-    # Model cho thông báo
-    content = models.TextField()
-
-    def __str__(self):
-        return self.content
-
-
-class UserNotification(models.Model):
-    # Bảng trung gian kết nối User và Notification
-    user = models.ForeignKey(User, on_delete=models.CASCADE)
-    notification = models.ForeignKey(Notification, on_delete=models.CASCADE)
-    is_read = models.BooleanField(default=False)
-
-    def __str__(self):
-        return f" Notification for {self.user.username}: {self.notification.content}"
