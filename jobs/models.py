@@ -49,43 +49,6 @@ class User(AbstractUser):
         ordering = ['id']  # Sắp xếp theo thứ tự id tăng dần
 
 
-class Room(models.Model):
-    sender = models.ForeignKey(User, related_name='sender_rooms', on_delete=models.CASCADE, null=True, blank=True)
-    receiver = models.ForeignKey(User, related_name='receiver_rooms', on_delete=models.CASCADE, null=True,
-                                 blank=True)
-    created_at = models.DateTimeField(auto_now_add=True, null=True, blank=True)
-
-    class Meta:
-        # Đảm bảo mỗi cặp người dùng (sender, receiver) chỉ có một phòng chat.
-        unique_together = ('sender', 'receiver')
-
-    def __str__(self):
-        return f"ChatRoom between {self.sender.username} and {self.receiver.username}"
-
-class Message(models.Model):
-    message = models.TextField()
-    sender = models.ForeignKey(User, related_name='sent_messages', on_delete=models.CASCADE, null=True, blank=True)
-    room = models.ForeignKey(Room, related_name='messages', on_delete=models.CASCADE)
-    created_at = models.DateTimeField(auto_now_add=True, blank=True, null=True)
-
-    def __str__(self):
-        return f"Message from {self.sender.username} in room {self.room.id}"
-
-
-class Invoice(models.Model):
-    # Một người dùng có thể có nhiều hóa đơn
-    user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
-    stripe_session_id = models.CharField(max_length=255, unique=True)
-    amount_total = models.DecimalField(max_digits=10, decimal_places=2)
-    currency = models.CharField(max_length=10)
-    payment_status = models.CharField(max_length=20)
-    payment_date = models.DateTimeField(null=True)
-    customer_email = models.EmailField(null=True, blank=True)
-
-    def __str__(self):
-        return f"Invoice {self.stripe_session_id} - {self.user.username}"
-
-
 # Nhà tuyển dụng
 class Company(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE)
@@ -102,14 +65,6 @@ class Company(models.Model):
 
     class Meta:
         ordering = ['id']
-
-
-# Khu vực
-class Area(models.Model):
-    name = models.CharField(max_length=255)
-
-    def __str__(self):
-        return self.name
 
 
 # Loại công việc
@@ -148,6 +103,56 @@ class Job(BaseModel):
     class Meta:
         unique_together = ('company', 'title')
         ordering = ['deadline', 'id']
+
+
+class Room(models.Model):
+    sender = models.ForeignKey(User, related_name='sender_rooms', on_delete=models.CASCADE, null=True, blank=True)
+    receiver = models.ForeignKey(User, related_name='receiver_rooms', on_delete=models.CASCADE, null=True,
+                                 blank=True)
+    job = models.ForeignKey(Job, related_name='job_room', on_delete=models.CASCADE, null=True,
+                                 blank=True)
+    created_at = models.DateTimeField(auto_now_add=True, null=True, blank=True)
+
+    class Meta:
+        # Đảm bảo mỗi cặp người dùng (sender, receiver) chỉ có một phòng chat.
+        unique_together = ('sender', 'receiver')
+
+    def __str__(self):
+        return f"ChatRoom between {self.sender.username} and {self.receiver.username}"
+
+
+class Message(models.Model):
+    message = models.TextField()
+    sender = models.ForeignKey(User, related_name='sent_messages', on_delete=models.CASCADE, null=True, blank=True)
+    room = models.ForeignKey(Room, related_name='messages', on_delete=models.CASCADE)
+    created_at = models.DateTimeField(auto_now_add=True, blank=True, null=True)
+    job = models.ForeignKey(Job, related_name='job_message', on_delete=models.CASCADE, null=True,
+                            blank=True)
+
+    def __str__(self):
+        return f"Message from {self.sender.username} in room {self.room.id}"
+
+
+class Invoice(models.Model):
+    # Một người dùng có thể có nhiều hóa đơn
+    user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
+    stripe_session_id = models.CharField(max_length=255, unique=True)
+    amount_total = models.DecimalField(max_digits=10, decimal_places=2)
+    currency = models.CharField(max_length=10)
+    payment_status = models.CharField(max_length=20)
+    payment_date = models.DateTimeField(null=True)
+    customer_email = models.EmailField(null=True, blank=True)
+
+    def __str__(self):
+        return f"Invoice {self.stripe_session_id} - {self.user.username}"
+
+
+# Khu vực
+class Area(models.Model):
+    name = models.CharField(max_length=255)
+
+    def __str__(self):
+        return self.name
 
 
 # Người xin việc
