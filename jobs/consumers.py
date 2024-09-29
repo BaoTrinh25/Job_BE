@@ -1,4 +1,3 @@
-
 import json
 from django.db.models import Q
 from channels.db import database_sync_to_async
@@ -45,8 +44,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
                     'avatar': msg.sender.avatar.url if msg.sender.avatar else None,
                 },
                 'sender_id': msg.sender.id,
-                'receiver_id': receiver_id,
-                'created_at': msg.created_at.isoformat(),
+                'receiver_id': receiver_id
             } for msg in messages]
         except Room.DoesNotExist:
             return []  # Return empty if room does not exist
