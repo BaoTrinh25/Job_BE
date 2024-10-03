@@ -1,5 +1,5 @@
 from jobs.models import Job, Rating
-from jobs import serializers, perms
+from jobs import serializers, perms, utils
 from jobs import paginators
 from django.utils import timezone
 from rest_framework.response import Response
@@ -23,9 +23,10 @@ from .schemas import apply_job_schema, jobSeeker_create_schema, employer_create_
 
 from jobPortal import settings
 import stripe
-from rest_framework.viewsets import ViewSet
-from rest_framework.views import APIView
-
+from google.oauth2 import id_token  # Dùng để xác thực id_token của Google
+from google.auth.transport import requests as gg_requests  # Dùng để gửi request xác thực token
+import requests  # Dùng để xác thực reCAPTCHA
+from rest_framework.permissions import AllowAny
 
 
 # Create your views here.
@@ -766,11 +767,6 @@ class UserViewSet(viewsets.ViewSet, generics.CreateAPIView, generics.ListAPIView
 
         serializer = serializers.JobSeekerCreateSerializer(data=request.data)
         if serializer.is_valid():
-        #     serializer.save(user=user)
-        #     return Response(serializer.data, status=status.HTTP_201_CREATED)
-        # else:
-        #     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
             job_seeker = serializer.save(user=user)
 
         # Trả về dữ liệu với skills và areas
@@ -797,6 +793,89 @@ class UserViewSet(viewsets.ViewSet, generics.CreateAPIView, generics.ListAPIView
             return Response(serializer.data, status=status.HTTP_201_CREATED)
         else:
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(methods=['post'], url_path='google-login', detail=False, permission_classes=[AllowAny])
+    def google_login(self, request):
+        id_token_from_client = request.data.get('id_token')
+        # print("Received ID token:", id_token_from_client)
+        if not id_token_from_client:
+            return Response({'error': 'Mã xác thực không được cung cấp'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            idinfo = id_token.verify_oauth2_token(
+                id_token_from_client,
+                gg_requests.Request(),
+                audience='611474340578-ilfvgku96p9c6iim54le53pnhimvi8bv.apps.googleusercontent.com'
+            )
+            print("ID info:", idinfo)
+            user_email = idinfo.get('email')
+            user_name = idinfo.get('name')
+            user_avatar = idinfo.get('picture')
+
+            if not user_email:
+                return Response({'error': 'Không tìm thấy email trong mã xác thực'}, status=status.HTTP_400_BAD_REQUEST)
+
+            # Kiểm tra xem người dùng đã tồn tại hay chưa
+            user = User.objects.filter(email=user_email).first()  # Tìm người dùng theo email
+            created = False
+
+            if user is None:
+                # Nếu không tồn tại người dùng, tạo người dùng mới
+                user = User.objects.create(
+                    username=user_name,
+                    email=user_email,
+                    avatar=utils.upload_image_from_url(user_avatar),
+                    role=0  # Gán role = 0 mặc định cho người dùng mới
+                )
+                created = True  # Đánh dấu là người dùng mới được tạo
+
+                # Nếu người dùng đã tồn tại, không cần tạo mới, chỉ cần cập nhật avatar nếu cần
+            else:
+                user.avatar = utils.upload_image_from_url(user_avatar)
+                user.save()
+
+            access_token, refresh_token = utils.create_user_token(user=user)
+            if not access_token or not refresh_token:
+                return Response({'error': 'Token creation failed'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+            return Response({
+                'user': {
+                    'id': user.id,
+                    'username': user.username,
+                    'email': user.email,
+                    'role': user.role
+                },
+                'created': created,
+                'token': {
+                    'access_token': access_token.token,
+                    'expires_in': 36000,
+                    'refresh_token': refresh_token.token,
+                    'token_type': 'Bearer',
+                    'scope': access_token.scope,
+                }
+            })
+        except ValueError as e:
+            print(e)
+            return Response({'error': 'Xác thực không thành công', 'details': str(e)},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+    @action(methods=['post'], url_path='verify-captcha', detail=False)
+    def verify_captcha(self, request):
+        captcha_response = request.data.get('g-recaptcha-response')
+        if not captcha_response:
+            return Response({'error': 'Mã xác thực CAPTCHA không được cung cấp'}, status=status.HTTP_400_BAD_REQUEST)
+
+        data = {
+            'secret': settings.RECAPTCHA_SECRET_KEY,
+            'response': captcha_response
+        }
+        response = requests.post('https://www.google.com/recaptcha/api/siteverify', data=data)
+        result = response.json()
+
+        if result.get("success"):
+            return Response({'success': True}, status=status.HTTP_200_OK)
+        else:
+            return Response({'error': 'Xác thực CAPTCHA không thành công'}, status=status.HTTP_400_BAD_REQUEST)
 
 
 class CompanyViewSet(viewsets.ViewSet, generics.ListAPIView, generics.RetrieveAPIView, generics.CreateAPIView, generics.UpdateAPIView):

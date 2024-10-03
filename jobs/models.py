@@ -5,6 +5,7 @@ from django.core.validators import MinValueValidator, MaxValueValidator
 from django.db import models
 from phonenumber_field.modelfields import PhoneNumberField
 from ckeditor.fields import RichTextField
+from django.utils.translation import gettext_lazy as _
 
 
 # Create your models here
@@ -42,8 +43,7 @@ class User(AbstractUser):
     mobile = PhoneNumberField(region="VN", null=True, blank=True)
     email = models.EmailField(unique=True, null=True, blank=True)
     gender = models.IntegerField(choices=GENDER_CHOICES, null=True, blank=True)
-
-    role = models.IntegerField(choices=ROLE_CHOICES, null=True, blank=True)
+    role = models.IntegerField(choices=ROLE_CHOICES, null=True, blank=True, default=0)
 
     class Meta:
         ordering = ['id']  # Sắp xếp theo thứ tự id tăng dần
