@@ -15,27 +15,6 @@ def count_job_application_quarter_career():
 
     return queryset
 
-# # Đếm số đơn tuyển dụng mỗi bài đăng
-# def count_job_applications_per_recruitment():
-#     # Truy vấn đếm số đơn ứng tuyển mỗi bài đăng tuyển dụng
-#     applications_per_recruitment = JobApplication.objects.values('recruitment_id') \
-#         .annotate(total_applications=Count('id')) \
-#         .order_by('recruitment_id')
-#
-#     return applications_per_recruitment
-
-# Viết câu truy vấn đếm số lượng đơn xin việc (JobApplication) là giới tính nữ mỗi bài đăng tuyển việc làm (RecruitmentPost)
-# Kèm theo tổng số đơn xin việc của mỗi bài tuyển dụng
-
-# Tìm danh sách các bài đăng mà user đó đã đăng
-
-def recruitment_posts_with_female_applicants():
-    return Job.objects.annotate(
-        num_female_applicants=Count('jobapplication', filter=Q(jobapplication__jobseeker__user__gender=1)),
-        # Giới tính nữ trong choices là 1
-        total_applications=Count('jobapplication'),
-    ).values('id', 'title', 'num_female_applicants', 'total_applications')
-
 
 # Tìm các bài đăng tuyển việc làm trên mức lương người dùng nhập
 def search_salary_recruiment_post(salary):
@@ -62,21 +41,6 @@ def recruiment_posts_apply_by_ID(id):
     applications = job.jobapplication_set.all()
     return applications
 
-# Tìm các đánh giá của một bài đăng tuyển dụng (ID mình nhập)
-def recruiment_posts_list_rating_by_ID(id):
-    # Lấy bài đăng tuyển dụng từ pk (primary key)
-    job = Job.objects.get(pk=id)
-    # Lấy danh sách các đánh giá liên quan đến bài đăng này
-    ratings = job.rating_set.all()
-    return ratings
-
-# Tìm các bình luận của một bài đăng tuyển dụng (ID mình nhập)
-def recruiment_posts_list_comment_by_ID(id):
-    # Lấy bài đăng tuyển dụng từ pk (primary key)
-    job = Job.objects.get(pk=id)
-    # Lấy danh sách các đánh giá liên quan đến bài đăng này
-    comments = job.comment_set.all()
-    return comments
 
 # Tìm bài đăng tuyển được yêu thích nhất (dựa vào lượt like)
 def recruiment_posts_most_like_first_by_ID():
@@ -133,52 +97,7 @@ def count_recruitment_posts_by_location():
 
     return job_by_location
 
-# Đếm số lượng bài đăng tuyển dụng theo người đăng tuyển dụng
-def count_recruitment_posts_by_employer():
-    recruitment_posts_by_employer = Job.objects.values('company__companyName').annotate(
-        total=Count('id')
-    ).order_by('-total')
 
-    return recruitment_posts_by_employer
-
-# Tính tổng số lượt comment trung bình mỗi bài đăng tuyển dụng
-def average_comments_per_recruitment_post():
-    average_comments = Rating.objects.values('interaction__job').annotate(
-        average_comments=Avg('id')
-    ).aggregate(
-        overall_average=Avg('average_comments')
-    )
-
-    return average_comments
-
-
-# Tính tổng số lượt rating trung bình mỗi bài đăng tuyển dụng
-def average_ratings_per_recruitment_post():
-    average_ratings = Rating.objects.values('interaction__job').annotate(
-        average_ratings=Avg('rating')
-    ).aggregate(
-        overall_average=Avg('average_ratings')
-    )
-
-    return average_ratings
-
-# Tính tổng số lượt like trung bình mỗi bài đăng tuyển dụng
-def average_likes_per_recruitment_post():
-    average_likes = Like.objects.values('interaction__job').annotate(
-        average_likes=Avg('id')
-    ).aggregate(
-        overall_average=Avg('average_likes')
-    )
-
-    return average_likes
-
-# Đếm số lượng bài đăng tuyển dụng có mức lương cao hơn 10 triệu VND
-def count_recruitment_posts_with_high_salary():
-    recruitment_posts_with_high_salary = Job.objects.filter(
-        salary__gt=10000000
-    ).count()
-
-    return recruitment_posts_with_high_salary
 
 # Đếm số lượng ứng viên có mức lương mong đợi trên 15 triệu VND
 def count_applicants_with_high_salary_expectation():

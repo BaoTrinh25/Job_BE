@@ -4,16 +4,24 @@ from jobs.models import (User, JobSeeker, Skill, Area, Career, EmploymentType, C
 from django.contrib.auth import get_user_model
 from .models import COMPANY_CHOICES
 from django.utils.html import strip_tags #loại bỏ thẻ html bên trong richtextfield
+from datetime import datetime
 
 
-User = get_user_model()
+# class AvatarSerializer(serializers.ModelSerializer):
+
+#   def to_representation(self, instance):
+#         req = super().to_representation(instance)
+#         req['image'] = instance.image.url
+#         return req
 
 
 class InvoiceSerializer(serializers.ModelSerializer):
     class Meta:
         model = Invoice
-        fields = ['id', 'stripe_session_id', 'amount_total', 'currency', 'payment_status', 'payment_date', 'customer_email']
+        fields = ['id', 'stripe_session_id', 'amount_total','country' , 'currency', 'payment_status', 'payment_date', 'customer_email',  'card_number', 'payer_name']
         read_only_fields = ['id', 'payment_date', 'user']
+
+
 
 class SkillSerializer(serializers.ModelSerializer):
     class Meta:
@@ -217,6 +225,7 @@ class CompanyCreateSerializer(serializers.ModelSerializer):
 
 
 class JobSerializer(serializers.ModelSerializer):
+    company = CompanySerializer()
     career = CareerSerializer()
     employmenttype = EmploymentTypeSerializer()
     area = AreaSerializer()
@@ -274,10 +283,13 @@ class JobSerializer(serializers.ModelSerializer):
     class Meta:
         model = Job
         fields = ['id', 'user', 'company', 'image', 'career', 'employmenttype', 'area', 'title', 'deadline',
-        'quantity', 'location', 'salary', 'description', 'experience', 'created_date', 'active']
+        'quantity', 'location', 'salary', 'description', 'experience', 'created_date', 'active', 'position']
 
 
 class JobCreateSerializer(serializers.ModelSerializer):
+
+    deadline = serializers.DateField(input_formats=['%d/%m/%Y'], format="%d/%m/%Y")
+
     # Tạo đường dẫn tuyệt đối cho trường image (image upload lên Cloudinary)
     def to_representation(self, instance):
         req = super().to_representation(instance)
@@ -285,6 +297,12 @@ class JobCreateSerializer(serializers.ModelSerializer):
         if instance.image:
             req['image'] = instance.image.url
         return req
+
+    def validate_deadline(self, value):
+        if value:
+            if value < datetime.now().date():
+                raise serializers.ValidationError("Deadline không thể là ngày trong quá khứ")
+        return value
 
     class Meta:
         model = Job
@@ -307,7 +325,9 @@ class RatingSerializer(serializers.ModelSerializer):
     created_date = serializers.SerializerMethodField()
 
     def get_user(self, obj):
-        return UserDetailSerializer(obj.jobseeker.user).data
+        if obj.jobseeker and obj.jobseeker.user:
+            return UserDetailSerializer(obj.jobseeker.user).data
+        return None
 
     #Format lại giá trị ngày
     def get_created_date(self, instance):
@@ -333,13 +353,14 @@ class RatingUpdateSerializer(serializers.ModelSerializer):
 class JobApplicationSerializer(serializers.ModelSerializer):
     status = serializers.PrimaryKeyRelatedField(read_only=True)
     date = serializers.SerializerMethodField()
-    job = JobSerializer()
+    job = serializers.PrimaryKeyRelatedField(queryset=Job.objects.all())
     user = serializers.SerializerMethodField()
-    content = serializers.SerializerMethodField()
+    content = serializers.CharField()
+    jobseeker = serializers.PrimaryKeyRelatedField(queryset=JobSeeker.objects.all(), write_only=True)
 
     class Meta:
         model = JobApplication
-        fields = ['id', 'is_student', 'job', 'user', 'content', 'status', 'date']
+        fields = ['id', 'is_student', 'job', 'jobseeker', 'user', 'content', 'status', 'date']
         read_only_fields = ['status']
         depth = 1
 
@@ -354,7 +375,10 @@ class JobApplicationSerializer(serializers.ModelSerializer):
         return ""
 
     def get_user(self, obj):
-        return UserDetailSerializer(obj.jobseeker.user).data
+        if obj.jobseeker and obj.jobseeker.user:
+            return UserDetailSerializer(obj.jobseeker.user).data
+        return None
+
 
     def get_content(self, obj):
         # Sử dụng strip_tags để loại bỏ thẻ HTML, chỉ giữ lại nội dung văn bản
@@ -363,9 +387,11 @@ class JobApplicationSerializer(serializers.ModelSerializer):
 
 class JobApplicationStatusSerializer(serializers.ModelSerializer):
     job = JobSerializer()
-    user = UserDetailSerializer()
     status = StatusSerializer()
     date = serializers.SerializerMethodField()
+    user = serializers.SerializerMethodField()
+    content = serializers.CharField()
+    jobseeker = serializers.PrimaryKeyRelatedField(queryset=JobSeeker.objects.all(), write_only=True)
 
     #Format lại giá trị ngày
     def get_date(self, instance):
@@ -373,9 +399,18 @@ class JobApplicationStatusSerializer(serializers.ModelSerializer):
             return instance.date.strftime("%d/%m/%Y %H:%M")
         return ""
 
+    def get_user(self, obj):
+        if obj.jobseeker and obj.jobseeker.user:
+            return UserDetailSerializer(obj.jobseeker.user).data
+        return None
+
+    def get_content(self, obj):
+        # Sử dụng strip_tags để loại bỏ thẻ HTML, chỉ giữ lại nội dung văn bản
+        return strip_tags(obj.content)
+
     class Meta:
         model = JobApplication
-        fields = ['id', 'job', 'user', 'status', 'content', 'is_student', 'date']
+        fields = ['id', 'job', 'user', 'jobseeker', 'status', 'content', 'is_student', 'date']
 
 
 class LikeSerializer(serializers.ModelSerializer):

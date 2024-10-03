@@ -5,12 +5,8 @@ from django.core.validators import MinValueValidator, MaxValueValidator
 from django.db import models
 from phonenumber_field.modelfields import PhoneNumberField
 from ckeditor.fields import RichTextField
-from django.utils.translation import gettext_lazy as _
 
 
-# Create your models here
-
-# class abstract
 class BaseModel(models.Model):
     created_date = models.DateTimeField(auto_now_add=True, null=True)
     updated_date = models.DateTimeField(auto_now=True, null=True )
@@ -48,6 +44,19 @@ class User(AbstractUser):
     class Meta:
         ordering = ['id']  # Sắp xếp theo thứ tự id tăng dần
 
+class Invoice(models.Model):
+    # Một người dùng có thể có nhiều hóa đơn
+    user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
+    stripe_session_id = models.CharField(max_length=255, unique=True)
+    amount_total = models.DecimalField(max_digits=10, decimal_places=2)
+    currency = models.CharField(max_length=10)
+    payment_status = models.CharField(max_length=20)
+    payment_date = models.DateTimeField(auto_now_add=True, null=True)
+    customer_email = models.EmailField(null=True, blank=True)
+    product_item = models.CharField(max_length=255, null=True, blank=True)
+
+    def __str__(self):
+        return f"Invoice {self.stripe_session_id} - {self.user.username}"
 
 # Nhà tuyển dụng
 class Company(models.Model):
@@ -132,21 +141,6 @@ class Message(models.Model):
     def __str__(self):
         return f"Message from {self.sender.username} in room {self.room.id}"
 
-
-class Invoice(models.Model):
-    # Một người dùng có thể có nhiều hóa đơn
-    user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
-    stripe_session_id = models.CharField(max_length=255, unique=True)
-    amount_total = models.DecimalField(max_digits=10, decimal_places=2)
-    currency = models.CharField(max_length=10)
-    payment_status = models.CharField(max_length=20)
-    payment_date = models.DateTimeField(null=True)
-    customer_email = models.EmailField(null=True, blank=True)
-
-    def __str__(self):
-        return f"Invoice {self.stripe_session_id} - {self.user.username}"
-
-
 # Khu vực
 class Area(models.Model):
     name = models.CharField(max_length=255)
@@ -165,7 +159,6 @@ class JobSeeker(models.Model):
     experience = models.TextField(null=True, blank=True)
     cv = CloudinaryField('cv', null=True, blank=True)
     career = models.ForeignKey('Career', on_delete=models.RESTRICT, null=True, blank=True)
-    applied_job = models.ForeignKey(Job, related_name='jobseekers', on_delete=models.CASCADE, null=True)
 
     def __str__(self):
         return self.user.username

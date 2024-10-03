@@ -26,8 +26,6 @@ router.register('skills', views.SkillViewSet, basename='skills')
 urlpatterns = [
     path('', include(router.urls)),
     path('payment_stripe/payment/', StripeCheckoutViewSet.as_view({'post': 'create'}), name='create_invoice'),
-    path('payment_stripe/<str:session_id>/', StripeCheckoutViewSet.as_view({'get': 'retrieve'}), name='get_invoice'),
-    path('invoices/', StripeCheckoutViewSet.as_view({'get': 'list'}), name='list_invoices'),
-    # path('payment_stripe/payment_success/', StripeCheckoutViewSet.as_view({'get': 'payment_success'}), name='payment_success'),
-
+    path('payment_success/', StripeCheckoutViewSet.as_view({'get': 'retrieve_payment'}), name='payment-success'),
+    path('invoices/', StripeCheckoutViewSet.as_view({'get': 'list_invoices'}), name='list_invoices'),
 ]

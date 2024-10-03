@@ -1,6 +1,5 @@
 from rest_framework import permissions
 
-
 # Là Admin và xác thực
 class AdminIsAuthenticated(permissions.IsAuthenticated):
     def has_permission(self, request, view):
@@ -11,34 +10,6 @@ class IsAdminOrSelf(permissions.BasePermission):
     def has_object_permission(self, request, view, obj):
         return request.user.is_authenticated and (request.user.is_staff or request.user.is_superuser or request.user == obj)
 
-# Người dùng xác thực và là chủ sở hữu (jobseeker)
-class AppOwnerAuthenticated(permissions.IsAuthenticated):
-    def has_object_permission(self, request, view, obj):
-        # Kiểm tra xem người dùng có quyền chung hay không (IsAuthenticated)
-        is_authenticated = self.has_permission(request, view)
-
-        # Kiểm tra xem người dùng có phải là chủ sở hữu của đối tượng hay không
-        is_owner = request.user.jobSeeker == obj
-
-        # Chỉ cho phép truy cập nếu cả hai điều kiện đều đúng
-        return is_authenticated and is_owner
-
-# Người dùng xác thực và là chủ sở hữu (employer)
-class EmOwnerAuthenticated(permissions.IsAuthenticated):
-    def has_object_permission(self, request, view, obj):
-        # Kiểm tra xem người dùng có được xác thực không
-        is_authenticated = self.has_permission(request, view)
-
-        # Kiểm tra xem người dùng có phải là chủ sở hữu của đối tượng hay không
-        is_owner = request.user.company == obj
-
-        # Trả về True nếu cả hai điều kiện đều đúng
-        return is_authenticated and is_owner
-
-# Viết tắt
-# class EmOwnerAuthenticated(permissions.IsAuthenticated):
-#     def has_object_permission(self, request, view, obj):
-#         return self.has_permission(request, view) and request.user.employer == obj
 
 # Là Employer và xác thực
 class EmIsAuthenticated(permissions.IsAuthenticated):

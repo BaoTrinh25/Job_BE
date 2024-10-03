@@ -31,15 +31,6 @@ employer_create_schema = openapi.Schema(
                 }
             )
 
-apply_job_schema = openapi.Schema(
-            type=openapi.TYPE_OBJECT,
-                properties={
-                    'content': openapi.Schema(type=openapi.TYPE_STRING),
-                    'is_student': openapi.Schema(type=openapi.TYPE_BOOLEAN),
-                    'job': openapi.Schema(type=openapi.TYPE_INTEGER),
-                    'jobseeker': openapi.Schema(type=openapi.TYPE_INTEGER),
-                }
-            )
 
 num_application_schema = openapi.Schema(
             type=openapi.TYPE_OBJECT,

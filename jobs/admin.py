@@ -19,7 +19,7 @@ class JobApplicationForm(forms.ModelForm):
 
     class Meta:
         model = JobApplication
-        fields = '__all__'
+        fields = ('is_student', 'job', 'jobseeker', 'content', 'status')
 
 
 class JobApplicationAdmin(admin.ModelAdmin):
@@ -272,18 +272,6 @@ class LikeAdmin(InteractionAdmin):
         return obj.job.title
 
     interaction__job__title.short_description = 'Job Title'
-
-
-
-class NotificationAdmin(admin.ModelAdmin):
-    list_display = ['id', 'content', 'created_date']
-    search_fields = ['content']
-
-
-class UserNotificationAdmin(admin.ModelAdmin):
-    list_display = ('user', 'notification', 'is_read')
-    list_filter = ('is_read',)
-    search_fields = ('user__username', 'notification__content')
 
 
 # Tạo trang admin theo cách của mình -> Ghi đè lại cái đã có
