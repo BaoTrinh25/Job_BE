@@ -7,10 +7,6 @@ from dotenv import load_dotenv
 # Load các biến môi trường từ file .env
 load_dotenv()
 
-# Google reCAPTCHA settings
-RECAPTCHA_SITE_KEY = os.getenv('RECAPTCHA_SITE_KEY', '6LcLtVUqAAAAAPmZBYDv0NlvLKgaL5q7zZgVmKy4')
-RECAPTCHA_SECRET_KEY = os.getenv('RECAPTCHA_SECRET_KEY', '6LcLtVUqAAAAAJmRzY8JCYEtIDDyJTEy3NWU8Tjb')
-
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 # SECURITY WARNING: keep the secret key used in production secret!
