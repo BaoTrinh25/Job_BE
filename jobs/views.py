@@ -859,24 +859,6 @@ class UserViewSet(viewsets.ViewSet, generics.CreateAPIView, generics.ListAPIView
             return Response({'error': 'Xác thực không thành công', 'details': str(e)},
                             status=status.HTTP_400_BAD_REQUEST)
 
-    @action(methods=['post'], url_path='verify-captcha', detail=False)
-    def verify_captcha(self, request):
-        captcha_response = request.data.get('g-recaptcha-response')
-        if not captcha_response:
-            return Response({'error': 'Mã xác thực CAPTCHA không được cung cấp'}, status=status.HTTP_400_BAD_REQUEST)
-
-        data = {
-            'secret': settings.RECAPTCHA_SECRET_KEY,
-            'response': captcha_response
-        }
-        response = requests.post('https://www.google.com/recaptcha/api/siteverify', data=data)
-        result = response.json()
-
-        if result.get("success"):
-            return Response({'success': True}, status=status.HTTP_200_OK)
-        else:
-            return Response({'error': 'Xác thực CAPTCHA không thành công'}, status=status.HTTP_400_BAD_REQUEST)
-
 
 class CompanyViewSet(viewsets.ViewSet, generics.ListAPIView, generics.RetrieveAPIView, generics.CreateAPIView, generics.UpdateAPIView):
     queryset = Company.objects.all()
