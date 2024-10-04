@@ -65,7 +65,7 @@ class StripeCheckoutViewSet(viewsets.ViewSet):
             redis_key = f"purchase_limit:{user_id}"
 
             if redis_client.exists(redis_key):
-                return Response({"error": "You can only purchase a package once every 1 days."},
+                return Response({"error": "Hãy kiểm tra lịch sử đơn hàng. Bạn chỉ có thể mua gói mới sau khi hết hạn!"},
                                 status=status.HTTP_400_BAD_REQUEST)
 
             # Tạo session thanh toán với price_id được gửi từ front-end
