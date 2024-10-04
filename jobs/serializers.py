@@ -18,9 +18,8 @@ from datetime import datetime
 class InvoiceSerializer(serializers.ModelSerializer):
     class Meta:
         model = Invoice
-        fields = ['id', 'stripe_session_id', 'amount_total','country' , 'currency', 'payment_status', 'payment_date', 'customer_email',  'card_number', 'payer_name']
-        read_only_fields = ['id', 'payment_date', 'user']
-
+        fields = ['id', 'user', 'product_item', 'payment_date', 'daily_post_limit', 'expiry_date', 'is_active',
+                  'is_expired']
 
 
 class SkillSerializer(serializers.ModelSerializer):

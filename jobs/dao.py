@@ -4,9 +4,13 @@ from jobs.models import (JobApplication, Job, Company, JobSeeker, EmploymentType
 from django.db.models import Count, Q, Avg
 from django.db.models.functions import ExtractQuarter, ExtractYear, TruncMonth
 
+#Truy vấn và trả về danh sách các hóa đơn đã thanh toán của người dùng.
 def get_paid_invoices(user):
-    #Truy vấn và trả về danh sách các hóa đơn đã thanh toán của người dùng.
     return Invoice.objects.filter(user=user, payment_status='paid')
+
+# Truy vấn hóa đơn được thanh toán gần nhất của người dùng.
+def get_latest_paid_invoice(user_id):
+    return Invoice.objects.filter(user_id=user_id, payment_status='paid').order_by('-payment_date').first()
 
 
 # Theo đề bài: Viết câu truy vấn đếm số đơn ứng tuyển của sinh viên theo nghề qua các quý và năm

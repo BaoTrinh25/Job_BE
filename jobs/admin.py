@@ -3,7 +3,7 @@ from django.template.response import TemplateResponse
 from django.utils.html import format_html
 from django.utils.safestring import mark_safe
 from jobs.models import (User, Company, JobSeeker, Area, EmploymentType, Job, JobApplication, Status,
-                         Skill, Career, Rating, Like)
+                         Skill, Career, Rating, Like, Invoice, Room, Message)
 from django import forms
 from ckeditor_uploader.widgets import CKEditorUploadingWidget
 import cloudinary
@@ -329,10 +329,24 @@ class ApplicationAdmin(admin.ModelAdmin):
     list_display = ('id', 'client_id', 'user', 'authorization_grant_type', 'client_type')
 
 
+class InvoiceAdmin(admin.ModelAdmin):
+    list_display = ['id', 'user', 'product_item', 'payment_status', 'payment_date']
+
+class RoomAdmin(admin.ModelAdmin):
+    class Meta:
+        model = " __all__"
+
+class MessageAdmin(admin.ModelAdmin):
+    class Meta:
+        model = " __all__"
+
 # Tạo đối tượng
 my_admin_site = MyAdminSite(name='myadmin')  # tạo đường dẫn myadmin
 
 my_admin_site.register(User, UserAdmin),
+my_admin_site.register(Invoice, InvoiceAdmin),
+my_admin_site.register(Room, RoomAdmin),
+my_admin_site.register(Message, MessageAdmin),
 my_admin_site.register(Company, CompanyAdmin),
 my_admin_site.register(JobSeeker, JobSeekerAdmin),
 my_admin_site.register(Area, AreaAdmin),

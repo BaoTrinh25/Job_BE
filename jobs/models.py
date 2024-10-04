@@ -5,7 +5,7 @@ from django.core.validators import MinValueValidator, MaxValueValidator
 from django.db import models
 from phonenumber_field.modelfields import PhoneNumberField
 from ckeditor.fields import RichTextField
-
+from django.utils import timezone
 
 class BaseModel(models.Model):
     created_date = models.DateTimeField(auto_now_add=True, null=True)
@@ -54,9 +54,34 @@ class Invoice(models.Model):
     payment_date = models.DateTimeField(auto_now_add=True, null=True)
     customer_email = models.EmailField(null=True, blank=True)
     product_item = models.CharField(max_length=255, null=True, blank=True)
+    daily_post_limit = models.IntegerField(default=1, null=True)
+    expiry_date = models.DateTimeField(null=True, blank=True)
+    is_active = models.BooleanField(default=True)
 
     def __str__(self):
         return f"Invoice {self.stripe_session_id} - {self.user.username}"
+
+    def save(self, *args, **kwargs):
+        if self.payment_status == 'paid' and not self.expiry_date:
+            # Tự động set daily_post_limit dựa trên product_item
+            if self.product_item == 'BASIC':
+                self.daily_post_limit = 3
+            elif self.product_item == 'PREMIUM':
+                self.daily_post_limit = 5
+
+            # Tự động set expiry_date (3 ngày từ ngày thanh toán)
+            self.expiry_date = timezone.now() + timezone.timedelta(days=3)
+
+        super().save(*args, **kwargs)
+
+    @property
+    def is_expired(self):
+        if self.expiry_date:
+            return timezone.now() > self.expiry_date
+        return True
+
+    class Meta:
+        ordering = ['-payment_date']
 
 # Nhà tuyển dụng
 class Company(models.Model):

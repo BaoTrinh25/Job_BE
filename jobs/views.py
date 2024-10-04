@@ -6,7 +6,7 @@ from rest_framework.response import Response
 from rest_framework import viewsets, generics, permissions, status
 from rest_framework.decorators import action
 from jobs import dao
-from .dao import get_paid_invoices
+from .dao import get_paid_invoices, get_latest_paid_invoice
 from .models import JobApplication, Company, JobSeeker, User, Like, Status, Invoice
 from .serializers import (JobApplicationSerializer, RatingSerializer, Career, EmploymentType, Area, JobSeekerCreateSerializer
                           ,AuthenticatedJobSerializer, LikeSerializer, JobSerializer, JobCreateSerializer,
@@ -56,6 +56,7 @@ class StripeCheckoutViewSet(viewsets.ViewSet):
             # Lấy price_id từ request body
             price_id = request.data.get('price_id')
             product_item = request.data.get('product_item')
+            daily_post_limit = request.data.get('daily_post_limit')
 
             if not price_id:
                 return Response({"error": "Price ID is required."}, status=status.HTTP_400_BAD_REQUEST)
@@ -64,9 +65,14 @@ class StripeCheckoutViewSet(viewsets.ViewSet):
             user_id = request.user.id
             redis_key = f"purchase_limit:{user_id}"
 
-            if redis_client.exists(redis_key):
-                return Response({"error": "Hãy kiểm tra lịch sử đơn hàng. Bạn chỉ có thể mua gói mới sau khi hết hạn!"},
-                                status=status.HTTP_400_BAD_REQUEST)
+            try:
+                if redis_client.exists(redis_key):
+                    return Response(
+                        {"error": "Hãy kiểm tra lịch sử đơn hàng. Bạn chỉ có thể mua gói mới sau khi hết hạn!"},
+                        status=status.HTTP_400_BAD_REQUEST)
+            except Exception as e:
+                return Response({"error": "Redis connection failed: " + str(e)},
+                                status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
             # Tạo session thanh toán với price_id được gửi từ front-end
             checkout_session = stripe.checkout.Session.create(
@@ -89,12 +95,13 @@ class StripeCheckoutViewSet(viewsets.ViewSet):
                 amount_total=0.00,  # Tổng số tiền sẽ được cập nhật sau
                 currency='VNĐ',  # Bạn có thể điều chỉnh nếu cần
                 payment_status='pending',  # Trạng thái ban đầu là pending
-                product_item=product_item  # Lưu tên sản phẩm
+                product_item=product_item,  # Lưu tên sản phẩm
+                daily_post_limit =daily_post_limit #Số lần đăng tin/1ngày
             )
             invoice.save()
 
             # Set the purchase restriction in Redis for 3 days
-            redis_client.setex(redis_key, timedelta(days=1), "restricted")
+            redis_client.setex(redis_key, timedelta(days=3), "restricted")
 
             return Response({"url": checkout_session.url}, status=status.HTTP_200_OK)
         except stripe.error.StripeError as e:
@@ -134,6 +141,8 @@ class StripeCheckoutViewSet(viewsets.ViewSet):
                 "payment_date": invoice.payment_date,
                 "customer_email": invoice.customer_email,
                 "product_item": invoice.product_item,
+                "daily_post_limit": invoice.daily_post_limit, #số lần đăng tin/1 ngày
+                "expiry_date": invoice.expiry_date  #ngày hết hạn gói đăng tin
             }
 
             return Response(invoice_data, status=status.HTTP_200_OK)
@@ -141,7 +150,6 @@ class StripeCheckoutViewSet(viewsets.ViewSet):
             return Response({"error": "Invoice not found."}, status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
             return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
 
     def list_invoices(self, request):
         try:
@@ -162,6 +170,8 @@ class StripeCheckoutViewSet(viewsets.ViewSet):
                     "payment_date": invoice.payment_date,
                     "customer_email": invoice.customer_email,
                     "product_item": invoice.product_item,
+                    "daily_post_limit": invoice.daily_post_limit,
+                    "expiry_date": invoice.expiry_date
                 })
 
             # Trả về danh sách hóa đơn dưới dạng JSON
@@ -265,40 +275,39 @@ class JobViewSet(viewsets.ModelViewSet):
 
         return queries
 
-    # Ghi đè lại hàm TẠO JOB
-    # def create(self, request, *args, **kwargs):
-    #     # Lấy toàn bộ dữ liệu từ request.data
-    #     job_posting_data = request.data.copy()
-    #     # Cập nhật trường company
-    #     job_posting_data['company'] = request.user.company.id
-    #
-    #     serializer = JobCreateSerializer(data= job_posting_data)
-    #     serializer.is_valid(raise_exception=True)
-    #     serializer.save()
-    #
-    #     return Response(serializer.data, status=status.HTTP_201_CREATED)
-
+    #TẠO BÀI TUYỂN DỤNG
     def create(self, request, *args, **kwargs):
         user_id = request.user.id
         today_date = datetime.now().date()
         redis_key = f"job_posted:{user_id}:{today_date}"
 
-        # Kiểm tra xem người dùng đã đăng bài hôm nay chưa
-        if redis_client.exists(redis_key):
-            return Response({"detail": "Bạn chỉ được đăng một bài tuyển dụng mỗi ngày."},
+        # Truy vấn hóa đơn gần nhất của người dùng
+        invoice = get_latest_paid_invoice(user_id)
+
+        # Kiểm tra nếu không có hóa đơn hoặc hóa đơn đã hết hạn
+        if not invoice or invoice.is_expired:
+            daily_post_limit = 1  # Chỉ được đăng 1 bài khi không có gói hợp lệ
+        else:
+            daily_post_limit = invoice.daily_post_limit  # Lấy số lượng bài đăng từ hóa đơn
+
+        # Kiểm tra số bài đã đăng trong ngày qua Redis
+        current_post_count = redis_client.get(redis_key)
+        current_post_count = int(current_post_count) if current_post_count else 0
+
+        if current_post_count >= daily_post_limit:
+            return Response({"detail": f"Đã đạt giới hạn đăng {daily_post_limit} bài trong 1 ngày."},
                             status=status.HTTP_400_BAD_REQUEST)
 
-        # Lấy toàn bộ dữ liệu từ request.data
+        # Tạo bài đăng tuyển dụng mới
         job_posting_data = request.data.copy()
-        # Cập nhật trường company
         job_posting_data['company'] = request.user.company.id
 
         serializer = JobCreateSerializer(data=job_posting_data)
         serializer.is_valid(raise_exception=True)
         serializer.save()
 
-        # Lưu trữ thông tin vào Redis với thời gian sống là 1 ngày
-        redis_client.set(redis_key, "posted", ex=timedelta(days=1))
+        # Cập nhật số lượng bài đã đăng vào Redis
+        redis_client.set(redis_key, current_post_count + 1, ex=timedelta(days=1))
 
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
