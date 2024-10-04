@@ -67,6 +67,19 @@ CHANNEL_LAYERS = {
     },
 }
 
+CACHES = {
+    'default': {
+        'BACKEND': 'django_redis.cache.RedisCache',
+        'LOCATION': 'redis://127.0.0.1:6379/1',  # Địa chỉ Redis server và database 1
+        'OPTIONS': {
+            'CLIENT_CLASS': 'django_redis.client.DefaultClient',
+        }
+    }
+}
+
+REDIS_HOST = 'localhost'  # Địa chỉ host của Redis
+REDIS_PORT = 6379         # Cổng mặc định của Redis
+
 # Cho phép tất cả domain truy cập
 CORS_ALLOW_ALL_ORIGINS = True
 

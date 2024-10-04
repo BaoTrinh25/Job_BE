@@ -1,5 +1,10 @@
 from rest_framework import permissions
 
+class IsEmployer(permissions.BasePermission):
+    def has_permission(self, request, view):
+        # Kiểm tra xem user có phải là Employer không
+        return request.user.is_authenticated and request.user.role == 1
+
 # Là Admin và xác thực
 class AdminIsAuthenticated(permissions.IsAuthenticated):
     def has_permission(self, request, view):
@@ -19,7 +24,7 @@ class EmIsAuthenticated(permissions.IsAuthenticated):
             return False
 
         # Now check if the authenticated user has the 'employer' attribute
-        return hasattr(request.user, 'employer')
+        return hasattr(request.user, 'company')
 
 # Là Application và xác thực
 class AppIsAuthenticated(permissions.IsAuthenticated):

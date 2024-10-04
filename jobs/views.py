@@ -6,6 +6,7 @@ from rest_framework.response import Response
 from rest_framework import viewsets, generics, permissions, status
 from rest_framework.decorators import action
 from jobs import dao
+from .dao import get_paid_invoices
 from .models import JobApplication, Company, JobSeeker, User, Like, Status, Invoice
 from .serializers import (JobApplicationSerializer, RatingSerializer, Career, EmploymentType, Area, JobSeekerCreateSerializer
                           ,AuthenticatedJobSerializer, LikeSerializer, JobSerializer, JobCreateSerializer,
@@ -13,7 +14,7 @@ from .serializers import (JobApplicationSerializer, RatingSerializer, Career, Em
 from rest_framework.permissions import IsAuthenticated
 from django.shortcuts import get_object_or_404
 from .paginators import LikedJobPagination
-from datetime import datetime
+from datetime import datetime, timedelta
 from .filters import JobFilter
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.exceptions import PermissionDenied
@@ -26,7 +27,9 @@ import stripe #Thanh toán với Stripe
 from google.oauth2 import id_token  # Dùng để xác thực id_token của Google
 from google.auth.transport import requests as gg_requests  # Dùng để gửi request xác thực token
 from rest_framework.permissions import AllowAny
-
+import redis
+# Kết nối tới Redis
+redis_client = redis.StrictRedis(host=settings.REDIS_HOST, port=settings.REDIS_PORT, db=0)
 
 # Create your views here.
 # Làm việc với GenericViewSet
@@ -57,6 +60,14 @@ class StripeCheckoutViewSet(viewsets.ViewSet):
             if not price_id:
                 return Response({"error": "Price ID is required."}, status=status.HTTP_400_BAD_REQUEST)
 
+            # Check Redis for the user's purchase restriction
+            user_id = request.user.id
+            redis_key = f"purchase_limit:{user_id}"
+
+            if redis_client.exists(redis_key):
+                return Response({"error": "You can only purchase a package once every 1 days."},
+                                status=status.HTTP_400_BAD_REQUEST)
+
             # Tạo session thanh toán với price_id được gửi từ front-end
             checkout_session = stripe.checkout.Session.create(
                 line_items=[
@@ -81,6 +92,9 @@ class StripeCheckoutViewSet(viewsets.ViewSet):
                 product_item=product_item  # Lưu tên sản phẩm
             )
             invoice.save()
+
+            # Set the purchase restriction in Redis for 3 days
+            redis_client.setex(redis_key, timedelta(days=1), "restricted")
 
             return Response({"url": checkout_session.url}, status=status.HTTP_200_OK)
         except stripe.error.StripeError as e:
@@ -134,8 +148,8 @@ class StripeCheckoutViewSet(viewsets.ViewSet):
             # Lấy người dùng hiện tại từ request
             user = request.user
 
-            # Lấy danh sách các hóa đơn của người dùng
-            invoices = Invoice.objects.filter(user=user)
+            # Lấy danh sách các hóa đơn của người dùng (truy vấn ở dao)
+            invoices = get_paid_invoices(user)
 
             # Chuyển đổi các hóa đơn thành dạng JSON để trả về
             invoice_list = []
@@ -222,7 +236,6 @@ class JobViewSet(viewsets.ModelViewSet):
         #     queries = queries.filter(active=True)
 
         # Kiểm tra nếu hành động là 'list' (tức là yêu cầu danh sách các bài đăng)
-
         if self.action == 'list':
             title = self.request.query_params.get('title')
             company_id = self.request.query_params.get('company_id')
@@ -253,17 +266,42 @@ class JobViewSet(viewsets.ModelViewSet):
         return queries
 
     # Ghi đè lại hàm TẠO JOB
+    # def create(self, request, *args, **kwargs):
+    #     # Lấy toàn bộ dữ liệu từ request.data
+    #     job_posting_data = request.data.copy()
+    #     # Cập nhật trường company
+    #     job_posting_data['company'] = request.user.company.id
+    #
+    #     serializer = JobCreateSerializer(data= job_posting_data)
+    #     serializer.is_valid(raise_exception=True)
+    #     serializer.save()
+    #
+    #     return Response(serializer.data, status=status.HTTP_201_CREATED)
+
     def create(self, request, *args, **kwargs):
+        user_id = request.user.id
+        today_date = datetime.now().date()
+        redis_key = f"job_posted:{user_id}:{today_date}"
+
+        # Kiểm tra xem người dùng đã đăng bài hôm nay chưa
+        if redis_client.exists(redis_key):
+            return Response({"detail": "Bạn chỉ được đăng một bài tuyển dụng mỗi ngày."},
+                            status=status.HTTP_400_BAD_REQUEST)
+
         # Lấy toàn bộ dữ liệu từ request.data
         job_posting_data = request.data.copy()
         # Cập nhật trường company
         job_posting_data['company'] = request.user.company.id
 
-        serializer = JobCreateSerializer(data= job_posting_data)
+        serializer = JobCreateSerializer(data=job_posting_data)
         serializer.is_valid(raise_exception=True)
         serializer.save()
 
+        # Lưu trữ thông tin vào Redis với thời gian sống là 1 ngày
+        redis_client.set(redis_key, "posted", ex=timedelta(days=1))
+
         return Response(serializer.data, status=status.HTTP_201_CREATED)
+
 
     # Ghi đè lại hàm xóa job
     def destroy(self, request, *args, **kwargs):

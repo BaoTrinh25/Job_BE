@@ -1,9 +1,12 @@
 from jobs.models import (JobApplication, Job, Company, JobSeeker, EmploymentType,
-                         Career, Rating, Like, User,
+                         Career, Invoice,
                          )
 from django.db.models import Count, Q, Avg
-from datetime import datetime
 from django.db.models.functions import ExtractQuarter, ExtractYear, TruncMonth
+
+def get_paid_invoices(user):
+    #Truy vấn và trả về danh sách các hóa đơn đã thanh toán của người dùng.
+    return Invoice.objects.filter(user=user, payment_status='paid')
 
 
 # Theo đề bài: Viết câu truy vấn đếm số đơn ứng tuyển của sinh viên theo nghề qua các quý và năm
@@ -14,11 +17,6 @@ def count_job_application_quarter_career():
         .annotate(total_applications=Count('id')).order_by('total_applications', 'year', 'quarter')
 
     return queryset
-
-
-# Tìm các bài đăng tuyển việc làm trên mức lương người dùng nhập
-def search_salary_recruiment_post(salary):
-    return Job.objects.filter(salary__gte=salary).order_by('-salary')
 
 
 # Tìm danh sách các bài đăng tuyển dụng được sắp xếp theo số lượng apply giảm dần
@@ -33,22 +31,6 @@ def count_apply_by_id_recruiment_post(id):
     # Đếm số lượng đơn ứng tuyển cho bài đăng này
     return job.jobapplication_set.count()  # jobapplication_set : truy vấn ngược
 
-# Tìm danh sách các apply của một bài đăng tuyển dụng (ID mình nhập vào)
-def recruiment_posts_apply_by_ID(id):
-    # Lấy bài đăng tuyển dụng từ pk (primary key)
-    job = Job.objects.get(pk=id)
-    # Lấy danh sách các ứng tuyển liên quan đến bài đăng này
-    applications = job.jobapplication_set.all()
-    return applications
-
-
-# Tìm bài đăng tuyển được yêu thích nhất (dựa vào lượt like)
-def recruiment_posts_most_like_first_by_ID():
-    # Lấy bài đăng tuyển dụng được sắp xếp theo số lượng lượt thích giảm dần
-    return Job.objects.annotate(num_likes=Count('like')).order_by('-num_likes').first()
-
-
-# #################################################################################################
 
 # Đếm số lượng bài tuyển dụng của mỗi nhà tuyển dụng
 def count_recruitment_posts_per_employer():
@@ -69,13 +51,6 @@ def count_recruitment_posts_per_employment_type():
 def count_recruitment_posts_per_career():
     return Career.objects.annotate(num_recruitment_posts=Count('job'))
 
-# Đếm số lượng đơn xin việc là giới tính nữ
-def count_female_job_applications():
-    return JobApplication.objects.filter(applicant__user__gender=1).count()
-
-# Đếm số lượng bài tuyển dụng là giới tính nữ
-def count_recruitment_posts_with_female_employees():
-    return Job.objects.filter(gender=1).count()
 
 # Đếm số lượng đơn xin việc theo tháng
 def count_job_applications_per_month():
@@ -89,30 +64,5 @@ def count_job_applications_per_month():
 def count_recruitment_posts_by_career():
     return Job.objects.values('career__name').annotate(total_posts=Count('id'))
 
-# Đếm số lượng bài đăng tuyển dụng theo vị trí địa lý
-def count_recruitment_posts_by_location():
-    job_by_location = Job.objects.values('location').annotate(
-        total=Count('id')
-    ).order_by('-total')
 
-    return job_by_location
-
-
-
-# Đếm số lượng ứng viên có mức lương mong đợi trên 15 triệu VND
-def count_applicants_with_high_salary_expectation():
-    applicants_with_high_salary_expectation = JobSeeker.objects.filter(
-        salary_expectation__gt=15000000
-    ).count()
-
-    return applicants_with_high_salary_expectation
-
-
-# Đếm số lượng bài đăng tuyển dụng có vị trí là "Nhân viên kinh doanh"
-def count_recruitment_posts_with_sales_position():
-    recruitment_posts_with_sales_position = Job.objects.filter(
-        position__icontains='nhân viên kinh doanh'
-    ).count()
-
-    return recruitment_posts_with_sales_position
 
