@@ -3,7 +3,7 @@ from django.template.response import TemplateResponse
 from django.utils.html import format_html
 from django.utils.safestring import mark_safe
 from jobs.models import (User, Company, JobSeeker, Area, EmploymentType, Job, JobApplication, Status,
-                         Skill, Career, Rating, Like, Invoice, Room, Message)
+                         Career, Rating, Like, Invoice, Room, Message)
 from django import forms
 from ckeditor_uploader.widgets import CKEditorUploadingWidget
 import cloudinary
@@ -76,11 +76,11 @@ class JobSeekerForm(forms.ModelForm):
 
     def clean(self):
         cleaned_data = super().clean()
-        skills = cleaned_data.get('skills')
+        # skills = cleaned_data.get('skills')
         areas = cleaned_data.get('areas')
 
-        if skills and skills.count() > 5:
-            raise forms.ValidationError("You can select a maximum of 5 skills.")
+        # if skills and skills.count() > 5:
+        #     raise forms.ValidationError("You can select a maximum of 5 skills.")
 
         if areas and areas.count() > 3:
             raise forms.ValidationError("You can select a maximum of 3 areas.")
@@ -193,8 +193,8 @@ class StatusAdmin(admin.ModelAdmin):
     list_display = ['id', 'role']
 
 
-class SkillAdmin(admin.ModelAdmin):
-    list_display = ['id', 'name']
+# class SkillAdmin(admin.ModelAdmin):
+#     list_display = ['id', 'name']
 
 
 class CareerAdmin(admin.ModelAdmin):
@@ -354,7 +354,7 @@ my_admin_site.register(EmploymentType, EmploymentTypeAdmin),
 my_admin_site.register(Job, JobAdmin),
 my_admin_site.register(JobApplication, JobApplicationAdmin),
 my_admin_site.register(Status, StatusAdmin),
-my_admin_site.register(Skill, SkillAdmin),
+# my_admin_site.register(Skill, SkillAdmin),
 my_admin_site.register(Career, CareerAdmin),
 my_admin_site.register(Rating, RatingAdmin),
 my_admin_site.register(Permission),

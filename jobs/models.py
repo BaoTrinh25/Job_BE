@@ -150,6 +150,7 @@ class Room(models.Model):
     class Meta:
         # Đảm bảo mỗi cặp người dùng (sender, receiver) chỉ có một phòng chat.
         unique_together = ('sender', 'receiver')
+        ordering = ['-id']
 
     def __str__(self):
         return f"ChatRoom between {self.sender.username} and {self.receiver.username}"
@@ -178,10 +179,9 @@ class Area(models.Model):
 class JobSeeker(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE)
     position = models.CharField(max_length=255, null=True, blank=True)    # Vị trí muốn ứng tuyển
-    skills = models.ManyToManyField('Skill', blank=True)
-    areas = models.ManyToManyField('Area', blank=True)
+    # skills = models.ManyToManyField('Skill', blank=True)
+    # areas = models.ManyToManyField('Area', blank=True)
     salary_expectation = models.CharField(max_length=255)
-    experience = models.TextField(null=True, blank=True)
     cv = CloudinaryField('cv', null=True, blank=True)
     career = models.ForeignKey('Career', on_delete=models.RESTRICT, null=True, blank=True)
 
@@ -218,11 +218,11 @@ class Status(models.Model):
         return self.role
 
 
-class Skill(models.Model):
-    name = models.CharField(max_length=255, unique=True, null=True, blank=True)
-
-    def __str__(self):
-        return self.name
+# class Skill(models.Model):
+#     name = models.CharField(max_length=255, unique=True, null=True, blank=True)
+#
+#     def __str__(self):
+#         return self.name
 
 
 class Career(models.Model):

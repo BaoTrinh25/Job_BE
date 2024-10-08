@@ -18,7 +18,7 @@ router.register('jobseeker', views.JobSeekerViewSet, basename='jobseeker')
 router.register('careers', views.CareerViewSet, basename='careers')
 router.register('employmenttypes', views.EmploymentTypeViewSet, basename='employmenttypes')
 router.register('areas', views.AreaViewSet, basename='areas')
-router.register('skills', views.SkillViewSet, basename='skills')
+# router.register('skills', views.SkillViewSet, basename='skills')
 
 
 

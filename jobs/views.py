@@ -10,7 +10,7 @@ from .dao import get_paid_invoices, get_latest_paid_invoice
 from .models import JobApplication, Company, JobSeeker, User, Like, Status, Invoice
 from .serializers import (JobApplicationSerializer, RatingSerializer, Career, EmploymentType, Area, JobSeekerCreateSerializer
                           ,AuthenticatedJobSerializer, LikeSerializer, JobSerializer, JobCreateSerializer,
-                          JobApplicationStatusSerializer,Skill, SkillSerializer, AreaSerializer)
+                          JobApplicationStatusSerializer, AreaSerializer)
 from rest_framework.permissions import IsAuthenticated
 from django.shortcuts import get_object_or_404
 from .paginators import LikedJobPagination
@@ -757,16 +757,11 @@ class UserViewSet(viewsets.ViewSet, generics.CreateAPIView, generics.ListAPIView
 
         serializer = serializers.JobSeekerCreateSerializer(data=request.data)
         if serializer.is_valid():
-        #     serializer.save(user=user)
-        #     return Response(serializer.data, status=status.HTTP_201_CREATED)
-        # else:
-        #     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
             job_seeker = serializer.save(user=user)
 
         # Trả về dữ liệu với skills và areas
             response_data = serializer.data
-            response_data['skills'] = SkillSerializer(job_seeker.skills, many=True).data
+            # response_data['skills'] = SkillSerializer(job_seeker.skills, many=True).data
             response_data['areas'] = AreaSerializer(job_seeker.areas, many=True).data
 
             return Response(response_data, status=status.HTTP_201_CREATED)
@@ -988,6 +983,6 @@ class AreaViewSet(viewsets.ViewSet, generics.ListAPIView, generics.RetrieveAPIVi
     serializer_class = serializers.AreaSerializer
 
 
-class SkillViewSet(viewsets.ViewSet, generics.ListAPIView, generics.RetrieveAPIView):
-    queryset = Skill.objects.all()
-    serializer_class = serializers.SkillSerializer
+# class SkillViewSet(viewsets.ViewSet, generics.ListAPIView, generics.RetrieveAPIView):
+#     queryset = Skill.objects.all()
+#     serializer_class = serializers.SkillSerializer

@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from jobs.models import (User, JobSeeker, Skill, Area, Career, EmploymentType, Company, Status, Job, Invoice,
+from jobs.models import (User, JobSeeker, Area, Career, EmploymentType, Company, Status, Job, Invoice,
                          Rating, JobApplication, Like)
 from django.contrib.auth import get_user_model
 from .models import COMPANY_CHOICES
@@ -22,10 +22,10 @@ class InvoiceSerializer(serializers.ModelSerializer):
                   'is_expired']
 
 
-class SkillSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Skill
-        fields = ['id', 'name']
+# class SkillSerializer(serializers.ModelSerializer):
+#     class Meta:
+#         model = Skill
+#         fields = ['id', 'name']
 
 
 class AreaSerializer(serializers.ModelSerializer):
@@ -125,32 +125,32 @@ class UserDetailSerializer(serializers.ModelSerializer):
 
 
 class JobSeekerCreateSerializer(serializers.ModelSerializer):
-    skills = serializers.PrimaryKeyRelatedField(many=True, queryset=Skill.objects.all(), required=False)
+    # skills = serializers.PrimaryKeyRelatedField(many=True, queryset=Skill.objects.all(), required=False)
     areas = serializers.PrimaryKeyRelatedField(many=True, queryset=Area.objects.all(), required=False)
     career = serializers.PrimaryKeyRelatedField(queryset=Career.objects.all(), required=False, allow_null=True)
 
     class Meta:
         model = JobSeeker
-        fields = ['id','position', 'salary_expectation', 'experience', 'cv', 'skills', 'areas', 'career']
+        fields = ['id','position', 'salary_expectation', 'experience', 'cv', 'areas', 'career']
 
-    def create(self, validated_data):
-        skills_data = validated_data.pop('skills', [])
-        areas_data = validated_data.pop('areas', [])
-        career_data = validated_data.pop('career', None)
-
-        jobseeker = JobSeeker.objects.create(**validated_data)
-
-        if skills_data:
-            jobseeker.skills.set(skills_data)
-
-        if areas_data:
-            jobseeker.areas.set(areas_data)
-
-        if career_data:
-            jobseeker.career = career_data
-
-        jobseeker.save()
-        return jobseeker
+    # def create(self, validated_data):
+    #     skills_data = validated_data.pop('skills', [])
+    #     areas_data = validated_data.pop('areas', [])
+    #     career_data = validated_data.pop('career', None)
+    #
+    #     jobseeker = JobSeeker.objects.create(**validated_data)
+    #
+    #     if skills_data:
+    #         jobseeker.skills.set(skills_data)
+    #
+    #     if areas_data:
+    #         jobseeker.areas.set(areas_data)
+    #
+    #     if career_data:
+    #         jobseeker.career = career_data
+    #
+    #     jobseeker.save()
+    #     return jobseeker
 
     # def to_representation(self, instance):
     #     req = super().to_representation(instance)
@@ -161,7 +161,7 @@ class JobSeekerCreateSerializer(serializers.ModelSerializer):
     def to_representation(self, instance):
         rep = super().to_representation(instance)
         # Thêm tên cho các trường skills và areas
-        rep['skills'] = SkillSerializer(instance.skills, many=True).data
+        # rep['skills'] = SkillSerializer(instance.skills, many=True).data
         rep['areas'] = AreaSerializer(instance.areas, many=True).data
         # Nếu ảnh khác null mới làm
         if instance.cv:
@@ -172,13 +172,13 @@ class JobSeekerCreateSerializer(serializers.ModelSerializer):
 # Dùng để hiển thị Applicant
 class JobSeekerSerializer(serializers.ModelSerializer):
 
-    skills = SkillSerializer(many=True)
-    areas = AreaSerializer(many=True)
+    # skills = SkillSerializer(many=True)
+    # areas = AreaSerializer(many=True)
     career = CareerSerializer()
 
     class Meta:
         model = JobSeeker
-        fields = ['id','position', 'skills', 'areas', 'salary_expectation', 'experience', 'cv', 'career']
+        fields = ['id','position', 'salary_expectation','cv', 'career']
 
     # Thêm đường dẫn cho ảnh của CV
     def to_representation(self, instance):

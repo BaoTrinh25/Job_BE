@@ -11,7 +11,8 @@ class ChatConsumer(AsyncWebsocketConsumer):
         super().__init__(*args, **kwargs)
         self.list_event = {
                 "chat" : self.build_message_chat,
-                "previous_messages" : self.previous_messages
+                "previous_messages" : self.previous_messages,
+                "user_chat_rooms": self.user_chat_rooms
         }
 
     async def connect(self):
@@ -115,6 +116,16 @@ class ChatConsumer(AsyncWebsocketConsumer):
             'receiver_id': receiver_id
         }))
 
+    async def user_chat_rooms(self, message):
+        user_id = message.get('user_id')
+
+        chat_rooms = await self.get_user_chat_rooms(user_id)
+
+        await self.send(text_data=json.dumps({
+            'type': 'user_chat_rooms',
+            'rooms': chat_rooms
+        }, cls=DjangoJSONEncoder))
+
     @database_sync_to_async
     def get_or_create_chatroom(self, sender_id, receiver_id, job_id):
         sender = User.objects.get(id=sender_id)
@@ -136,3 +147,25 @@ class ChatConsumer(AsyncWebsocketConsumer):
     def save_message(self, room, sender_id, message, job_id):
         sender = User.objects.get(id=sender_id)
         Message.objects.create(room=room, sender=sender, message=message, job_id=job_id)
+
+    @database_sync_to_async
+    def get_user_chat_rooms(self, user_id):
+        try:
+            # Get rooms where the user is either the sender or receiver
+            rooms = Room.objects.filter(Q(sender_id=user_id) | Q(receiver_id=user_id)).distinct()
+
+            # Serialize the room data
+            return [{
+                'room_id': room.id,
+                'job_id': room.job.id,
+                'job_title': room.job.title,
+                'sender_user': {
+                    'id': room.receiver.id if room.sender.id == user_id else room.sender.id,
+                    'username': room.receiver.username if room.sender.id == user_id else room.sender.username,
+                    'avatar': (room.receiver.avatar.url if room.sender.id == user_id else room.sender.avatar.url) if (
+                                room.receiver.avatar or room.sender.avatar) else None,
+                }
+            } for room in rooms]
+        except Exception as e:
+            # Handle exceptions as needed
+            return {"error": str(e)}
