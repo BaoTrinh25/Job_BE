@@ -1,21 +1,19 @@
-import os
 import cloudinary
 from pathlib import Path
-import os
-from dotenv import load_dotenv
-
-# Load các biến môi trường từ file .env
-load_dotenv()
+import environ
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+env = environ.Env()
+environ.Env.read_env(BASE_DIR / '.env')
+
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-4un)))_xd9a6hnt-cr1l7i9x1ixdvn5-#060@ky_)o7!kc*8x4'
+SECRET_KEY = env('SECRET_KEY')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = env.bool('DEBUG', default=True)
 
-ALLOWED_HOSTS = ['127.0.0.1', "localhost"]
+ALLOWED_HOSTS = ['127.0.0.1', 'localhost',]
 
 # Application definition
 
@@ -76,6 +74,16 @@ CACHES = {
         }
     }
 }
+
+
+# EMAIL_BACKEND = 'jobs.send-email.SendEmail'
+EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+EMAIL_HOST = 'smtp.gmail.com'
+EMAIL_PORT = 587
+EMAIL_USE_TLS = True
+EMAIL_HOST_USER = env('EMAIL_HOST_USER')
+EMAIL_HOST_PASSWORD = env('EMAIL_HOST_PASSWORD')
+
 
 REDIS_HOST = 'localhost'  # Địa chỉ host của Redis
 REDIS_PORT = 6379         # Cổng mặc định của Redis
@@ -144,11 +152,11 @@ AUTH_USER_MODEL = 'jobs.User'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.mysql',
-        'NAME': 'jobsdb',
-        'USER': 'root',
-        'PASSWORD': '123456',
-        'HOST': 'localhost',
-        'PORT': '3306',
+        'NAME': env('DATABASE_NAME'),
+        'USER': env('DATABASE_USER'),
+        'PASSWORD': env('DATABASE_PASSWORD'),
+        'HOST': env('DATABASE_HOST', default=''),
+        'PORT': env('DATABASE_PORT', default='3306'),
     }
 }
 
@@ -213,10 +221,6 @@ OAUTH2_PROVIDER = {
     'OAUTH2_BACKEND_CLASS': 'oauth2_provider.oauth2_backends.JSONOAuthLibCore'
 }
 
-
-CLIENT_ID = "3Mj3P2rLZV34jTnqcn09cc0cAGAZATPjUfhO9ftG"
-CLIENT_SECRET = "77sUVuOmGc5O2vwfxmCHZEEAJ6qfJBLYUMaKSti6jnhZ04GrL30DtLyLo5gcf6x1DxUJZiHV6Uf3ClH2NlyHVuHqjnxSFMr2ZwCktWWTfr3lF8YKN6VHJGTFZ6dYhnQv"
-
 SITE_URL ='http://localhost:3000'
 
 STRIPE_SECRET_KEY = 'sk_test_51PzHBhP5Uv4CEUblMyW7gjjY1QC6Z6A5i63X67uEOkVJwcxAuBQdMtMF2FyTiiNFgZnXiXd3Mw1bBUnUIOTHIbkb00u0hfE8Jk'
@@ -224,3 +228,6 @@ STRIPE_SECRET_KEY = 'sk_test_51PzHBhP5Uv4CEUblMyW7gjjY1QC6Z6A5i63X67uEOkVJwcxAuB
 CSRF_TRUSTED_ORIGINS = [
     'http://localhost:3000',
 ]
+
+CLIENT_ID = "3Mj3P2rLZV34jTnqcn09cc0cAGAZATPjUfhO9ftG"
+CLIENT_SECRET = "77sUVuOmGc5O2vwfxmCHZEEAJ6qfJBLYUMaKSti6jnhZ04GrL30DtLyLo5gcf6x1DxUJZiHV6Uf3ClH2NlyHVuHqjnxSFMr2ZwCktWWTfr3lF8YKN6VHJGTFZ6dYhnQv"

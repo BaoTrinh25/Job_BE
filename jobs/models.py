@@ -22,17 +22,16 @@ GENDER_CHOICES = (
     (2, 'N/A'),
 )
 
-ROLE_CHOICES = (
-    (0, 'Applicant'),
-    (1, 'Employer'),
-)
-
 COMPANY_CHOICES = (
     (0, 'Công ty TNHH'),
     (1, 'Công ty Cổ phần'),
     (2, 'Công ty tư nhân'),
 )
 
+ROLE_CHOICES = (
+    (0, 'Applicant'),
+    (1, 'Employer'),
+)
 
 class User(AbstractUser):
     avatar = CloudinaryField('avatar', null=True, blank=True)

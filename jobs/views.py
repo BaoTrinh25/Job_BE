@@ -1,3 +1,8 @@
+from django.core.mail import EmailMultiAlternatives, send_mail
+from django.http import HttpResponse
+from django.template.loader import render_to_string
+from django.utils.html import strip_tags
+
 from jobs.models import Job, Rating
 from jobs import serializers, perms, utils
 from jobs import paginators
@@ -12,7 +17,7 @@ from .serializers import (JobApplicationSerializer, RatingSerializer, Career, Em
                           ,AuthenticatedJobSerializer, LikeSerializer, JobSerializer, JobCreateSerializer,
                           JobApplicationStatusSerializer, AreaSerializer)
 from rest_framework.permissions import IsAuthenticated
-from django.shortcuts import get_object_or_404
+from django.shortcuts import get_object_or_404, render
 from .paginators import LikedJobPagination
 from datetime import datetime, timedelta
 from .filters import JobFilter
@@ -180,6 +185,21 @@ class StripeCheckoutViewSet(viewsets.ViewSet):
         except Exception as e:
             return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+# GỬI MAIL THÔNG BÁO ỨNG TUYỂN
+def send_application_status_email(jobseeker, job, status):
+    subject = f'Thông báo kết quả ứng tuyển vị trí "{job.title}"'
+    context = {
+        'jobseeker': jobseeker,
+        'job': job,
+        'status': status
+    }
+
+    message = render_to_string('email/send_email.txt', context)
+    email_from = settings.EMAIL_HOST_USER
+    recipient_list = [jobseeker.user.email]
+
+    send_mail(subject, message, email_from, recipient_list)
+
 
 class JobViewSet(viewsets.ModelViewSet):
     queryset = Job.objects.filter(active=True).order_by('id')
@@ -189,13 +209,6 @@ class JobViewSet(viewsets.ModelViewSet):
     # Thiết lập lớp phân trang (pagination class) cho một API view cụ thể.
     pagination_class = paginators.JobPaginator
 
-    # Phần filter
-    # GET /job/?min_salary=1000000:
-    # Lấy danh sách tất cả các bài đăng có mức lương yêu cầu từ 1,000,000 VND trở lên
-    # GET /job/?max_salary=2000000:
-    # Lấy danh sách tất cả các bài đăng có mức lương yêu cầu dưới 2,000,000 VND.
-    # GET /job/?min_salary=1000000&max_salary=2000000:
-    # Lấy danh sách các bài đăng có mức lương yêu cầu từ 1,000,000 VND đến 2,000,000 VND.
     filter_backends = [DjangoFilterBackend]
     filterset_class = JobFilter
 
@@ -225,14 +238,6 @@ class JobViewSet(viewsets.ModelViewSet):
             return serializers.JobApplicationStatusSerializer
 
         return self.serializer_class
-
-    # Không endpoint
-    # Tìm kiếm các bài đăng theo tiêu đề: /job/?title=example_title
-    # Tìm kiếm các bài đăng theo id của nhà tuyển dụng: /job/?employer_id=example_employer_i
-    # Tìm kiếm các bài đăng theo ngành nghề: /job/?career=example_career
-    # Tìm kiếm các bài đăng theo loại hình công việc: /job/?employment_type=example_employment_type
-    # Tìm kiếm các bài đăng theo địa điểm: /job/?location=example_location
-    # Tìm kiếm kết hợp các tiêu chí: /job/?title=example_title&employer_id=example_employer_id&career=example_career
 
     def get_queryset(self):
         # Code xử lý lọc dữ liệu ở đây
@@ -275,6 +280,7 @@ class JobViewSet(viewsets.ModelViewSet):
 
         return queries
 
+
     #TẠO BÀI TUYỂN DỤNG
     def create(self, request, *args, **kwargs):
         user_id = request.user.id
@@ -310,7 +316,6 @@ class JobViewSet(viewsets.ModelViewSet):
         redis_client.set(redis_key, current_post_count + 1, ex=timedelta(days=1))
 
         return Response(serializer.data, status=status.HTTP_201_CREATED)
-
 
     # Ghi đè lại hàm xóa job
     def destroy(self, request, *args, **kwargs):
@@ -478,7 +483,6 @@ class JobViewSet(viewsets.ModelViewSet):
             return Response({"error": "Job not found."}, status=status.HTTP_404_NOT_FOUND)
 
 
-
     # API ỨNG TUYỂN vào một bài đăng tuyển dụng
     # /jobs/<pk>/apply/
     @action(methods=['post'], detail=True)
@@ -507,7 +511,7 @@ class JobViewSet(viewsets.ModelViewSet):
             return Response({"error": "Job not found."}, status=status.HTTP_404_NOT_FOUND)
 
 
-    # API cập nhật một phần đơn ứng tuyển vào bài đăng tuyển dụng
+    # API CẬP NHẬT TRẠNG THÁI ĐƠN ỨNG TUYỂN
     # /jobs/{pk}/applications/{application_id}/partial-update/
     @action(detail=True, methods=['patch'], url_path='applications/(?P<application_id>\d+)/partial-update',
             url_name='partial_update_application')
@@ -531,16 +535,19 @@ class JobViewSet(viewsets.ModelViewSet):
                 if k == "status":
                     status_instance = get_object_or_404(Status, role=v)
                     setattr(application, k, status_instance)
+                    if v in ["Accepted", "Rejected"]:
+                        send_application_status_email(application.jobseeker, job, status_instance)
                 else:
                     setattr(application, k, v)
             application.save()
 
-            return Response(serializers.JobApplicationSerializer(application).data, status=status.HTTP_200_OK)
+            return Response({"message": "Job application updated successfully"}, status=status.HTTP_200_OK)
 
         except Job.DoesNotExist:
             return Response({"error": "Job not found."}, status=status.HTTP_404_NOT_FOUND)
         except JobApplication.DoesNotExist:
             return Response({"error": "Job application not found."}, status=status.HTTP_404_NOT_FOUND)
+
 
 
     # API xóa đơn ứng tuyển vào bài đăng tuyển dụng
@@ -793,15 +800,15 @@ class UserViewSet(viewsets.ViewSet, generics.CreateAPIView, generics.ListAPIView
             return Response({'error': 'Mã xác thực không được cung cấp'}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
-            idinfo = id_token.verify_oauth2_token(
+            id_info = id_token.verify_oauth2_token(
                 id_token_from_client,
                 gg_requests.Request(),
                 audience='611474340578-ilfvgku96p9c6iim54le53pnhimvi8bv.apps.googleusercontent.com'
             )
-            print("ID info:", idinfo)
-            user_email = idinfo.get('email')
-            user_name = idinfo.get('name')
-            user_avatar = idinfo.get('picture')
+            print("ID info:", id_info)
+            user_email = id_info.get('email')
+            user_name = id_info.get('name')
+            user_avatar = id_info.get('picture')
 
             if not user_email:
                 return Response({'error': 'Không tìm thấy email trong mã xác thực'}, status=status.HTTP_400_BAD_REQUEST)
