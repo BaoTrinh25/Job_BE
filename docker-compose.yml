@@ -22,3 +22,4 @@ services:
     volumes:
       - /tmp/app/mysqld:/var/run/mysqld
       - ./db:/var/lib/mysql
+      
