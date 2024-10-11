@@ -1,33 +1,32 @@
-# Sử dụng image Python
-FROM python:3.12
+# pull official base image
+FROM python:3.12-slim
 
-# Đặt biến môi trường
+# set work directory
+WORKDIR /usr/src/app
+
+# set environment variables
 ENV PYTHONDONTWRITEBYTECODE 1
 ENV PYTHONUNBUFFERED 1
 
-# Tạo thư mục làm việc
-WORKDIR /app
+# install mysql dependencies
+RUN apt-get update && apt-get install -y gcc default-libmysqlclient-dev dos2unix netcat-openbsd pkg-config
 
-# Cài đặt các gói cần thiết
-RUN apt-get update && apt-get install -y \
-    default-libmysqlclient-dev \
-    python3-dev \
-    build-essential \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
+# install dependencies
+COPY ./requirements.txt .
+RUN pip install --upgrade pip setuptools wheel
+RUN pip install -r requirements.txt --no-cache-dir
 
-# Sao chép requirements.txt vào container
-COPY requirements.txt /app/
+# copy project
+COPY . .
 
-# Cập nhật pip và cài đặt các gói từ requirements.txt
-RUN pip install --upgrade pip
-RUN pip install --no-cache-dir -r requirements.txt
+# Copy the entrypoint script to the appropriate location
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 
-# Sao chép mã nguồn vào container
-COPY . /app
+# Convert plain text files from Windows or Mac format to Unix
+RUN dos2unix /usr/local/bin/docker-entrypoint.sh
 
-# Expose port
-EXPOSE 8000
+# Make entrypoint executable
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
-# Lệnh chạy ứng dụng Django
-CMD ["python", "manage.py", "runserver", "0.0.0.0:8000"]
+# run entrypoint.sh
+ENTRYPOINT ["bash", "/usr/local/bin/docker-entrypoint.sh"]
