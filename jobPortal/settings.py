@@ -2,6 +2,9 @@ import os
 import cloudinary
 from pathlib import Path
 
+from dotenv import load_dotenv
+
+load_dotenv()  # This loads the environment variables from the .env file
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -10,10 +13,12 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = os.environ.get("SECRET_KEY")
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = int(os.environ.get("DEBUG", default=0))
+# DEBUG = int(os.environ.get("DEBUG", default=0))
+DEBUG = os.environ.get("DEBUG", default='0').lower() in ['true', '1', 't', 'y', 'yes']
 
 # ALLOWED_HOSTS = ['127.0.0.1', 'localhost',]
-ALLOWED_HOSTS = os.environ.get("DJANGO_ALLOWED_HOSTS").split(" ")
+ALLOWED_HOSTS = os.environ.get("DJANGO_ALLOWED_HOSTS", "localhost").split(" ")
+print("Allowed hosts are:", ALLOWED_HOSTS)
 
 # Application definition
 
@@ -162,11 +167,11 @@ AUTH_USER_MODEL = 'jobs.User'
 
 DATABASES = {
     'default': {
-        'ENGINE': os.environ.get('django.db.backends.mysql'),
-        'NAME': os.environ.get('MYSQL_DATABASE', os.path.join(BASE_DIR, 'db.mysql')),
-        'USER': os.environ.get('MYSQL_USER', "baotrinh"),
-        'PASSWORD': os.environ.get('MYSQL_PASSWORD', "123456"),
-        'HOST': os.environ.get('MYSQL_HOST', "localhost"),
+        "ENGINE": os.environ.get("MYSQL_ENGINE", "django.db.backends.sqlite3"),
+        "NAME": os.environ.get("MYSQL_DATABASE", os.path.join(BASE_DIR, 'db.sqlite3')),
+        'USER': os.environ.get('MYSQL_USER', 'myuser'),
+        'PASSWORD': os.environ.get('MYSQL_PASSWORD', 'myuserpassword'),
+        'HOST': os.environ.get('MYSQL_HOST', 'localhost'),
         'PORT': os.environ.get('MYSQL_PORT', default='3306'),
     }
 }

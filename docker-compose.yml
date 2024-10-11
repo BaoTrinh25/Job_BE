@@ -1,24 +1,35 @@
+
 services:
+  db:
+    container_name: mysql
+    image: mysql:8.0
+    restart: always
+    command: mysqld --default-authentication-plugin=mysql_native_password
+    volumes:
+      - ./mysql:/var/lib/mysql
+    env_file:
+      - ./.env
+    environment:
+      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
+      - MYSQL_USER=${MYSQL_USER}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+      - MYSQL_DATABASE=${MYSQL_DATABASE}
+    ports:
+      - 3307:3306
+
   web:
-    build: .
+    container_name: django-job-web
+    build:
+      context: .    # Sử dụng "." để chỉ định thư mục hiện tại
+      dockerfile: Dockerfile       # Chỉ định Dockerfile trong thư mục hiện tại
     command: python manage.py runserver 0.0.0.0:8000
     volumes:
-      - .:/app
-      - /tmp/app/mysqld:/run/mysqld
+      - .:/usr/src/app/   # Gắn kết thư mục hiện tại vào thư mục làm việc của container
+    env_file:
+      - ./.env
     ports:
-      - "8000:8000"
+      - 8000:8000
     depends_on:
-      - mysql
-
-  mysql:
-    image: mysql:latest
-    environment:
-      MYSQL_DATABASE: 'jobsdb'
-      MYSQL_USER: 'root'
-      MYSQL_PASSWORD: '123456'
-      MYSQL_ROOT_PASSWORD: '123456'
-    ports:
-      - "3307:3306"
-    volumes:
-      - /tmp/app/mysqld:/var/run/mysqld
-      - ./db:/var/lib/mysql
+      - db
+    links:
+      - db

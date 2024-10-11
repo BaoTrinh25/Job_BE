@@ -5,4 +5,4 @@ class MyAppConfig(AppConfig):
     name = 'jobs'
 
     def ready(self):
-        pass
+        import jobs.signals

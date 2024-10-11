@@ -1,20 +1,20 @@
 from django.core.mail import send_mail
 from django.template.loader import render_to_string
-from app.jobs.models import Job, Rating
-from app.jobs import serializers, perms, utils
-from app.jobs import paginators
+from jobs.models import Job, Rating
+from jobs import serializers, perms, utils
+from jobs import paginators
 from django.utils import timezone
 from rest_framework.response import Response
 from rest_framework import viewsets, generics, permissions, status
 from rest_framework.decorators import action
-from app.jobs import dao
+from jobs import dao
 from .dao import get_paid_invoices, get_latest_paid_invoice
 from .models import JobApplication, Company, JobSeeker, User, Like, Status, Invoice
 from .serializers import (JobApplicationSerializer, RatingSerializer, Career, EmploymentType, Area, JobSeekerCreateSerializer
                           ,AuthenticatedJobSerializer, LikeSerializer, JobSerializer, JobCreateSerializer,
                           JobApplicationStatusSerializer, AreaSerializer)
 from rest_framework.permissions import IsAuthenticated
-from django.shortcuts import get_object_or_404
+from django.shortcuts import get_object_or_404, render
 from .paginators import LikedJobPagination
 from datetime import datetime, timedelta
 from .filters import JobFilter
@@ -24,7 +24,7 @@ from drf_yasg import openapi
 from drf_yasg.utils import swagger_auto_schema
 from .schemas import jobSeeker_create_schema, employer_create_schema, num_application_schema
 
-from app.jobPortal import settings
+from jobPortal import settings
 import stripe #Thanh toán với Stripe
 from google.oauth2 import id_token  # Dùng để xác thực id_token của Google
 from google.auth.transport import requests as gg_requests  # Dùng để gửi request xác thực token

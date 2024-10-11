@@ -1,7 +1,7 @@
-from app.jobs.models import (JobApplication, Job, Company, JobSeeker, EmploymentType,
-                             Career, Invoice,
-                             )
-from django.db.models import Count
+from jobs.models import (JobApplication, Job, Company, JobSeeker, EmploymentType,
+                         Career, Invoice,
+                         )
+from django.db.models import Count, Q, Avg
 from django.db.models.functions import ExtractQuarter, ExtractYear, TruncMonth
 
 #Truy vấn và trả về danh sách các hóa đơn đã thanh toán của người dùng.
