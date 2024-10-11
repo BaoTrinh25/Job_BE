@@ -1,8 +1,6 @@
 import debug_toolbar
-from django.contrib import admin
 from django.urls import path, include, re_path
-from jobPortal import settings
-from jobs.admin import my_admin_site
+from app.jobs.admin import my_admin_site
 from drf_yasg.views import get_schema_view
 from rest_framework import permissions
 from drf_yasg import openapi

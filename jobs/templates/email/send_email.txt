@@ -2,13 +2,11 @@ Chào bạn {{ jobseeker.user.username }},
 
 Cảm ơn bạn đã dành thời gian ứng tuyển cho vị trí {{ job.title }}.
 
-Sau khi xem xét, chúng tôi rất ấn tượng với những gì bạn đã thể hiện ở đơn ứng tuyển.
 {% if status.role == "Accepted" %}
-Chúc mừng bạn đã được chấp nhận! Chúng tôi sẽ sắp xếp lịch và liên hệ lại cho bạn sau.
+Chúc mừng bạn đã được nhà tuyển dụng chấp nhận! Bạn sẽ được nhà tuyển dụng liên hệ vào thời gian gần nhất.
 {% elif status.role == "Rejected" %}
-Tuy nhiên, chúng tôi rất tiếc rằng bạn chưa phù hợp với yêu cầu công việc.
-Chúng tôi sẽ lưu hồ sơ của bạn lại và nếu trong tương lai có công việc phù hợp,
-chúng tôi hy vọng có cơ hội làm việc và gắn bó lâu dài với bạn.
+Tuy nhiên, chúng tôi rất tiếc phải thông báo rằng, nhà tuyển dụng chưa thực sự thấy bạn phù hợp với công việc này.
+
 {% endif %}
 Chúc bạn thành công!
 

@@ -1,14 +1,12 @@
 from django.contrib import admin
 from django.template.response import TemplateResponse
-from django.utils.html import format_html
 from django.utils.safestring import mark_safe
-from jobs.models import (User, Company, JobSeeker, Area, EmploymentType, Job, JobApplication, Status,
-                         Career, Rating, Like, Invoice, Room, Message)
+from app.jobs.models import (User, Company, JobSeeker, Area, EmploymentType, Job, JobApplication, Status,
+                             Career, Rating, Like, Invoice, Room, Message)
 from django import forms
-from ckeditor_uploader.widgets import CKEditorUploadingWidget
 import cloudinary
 from django.urls import path
-from jobs import dao
+from app.jobs import dao
 from django.shortcuts import render
 from django.contrib.auth.models import Permission  # Phần chứng thực
 from oauth2_provider.models import AccessToken, Application, Grant, RefreshToken, IDToken

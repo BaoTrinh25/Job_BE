@@ -1,19 +1,19 @@
+import os
 import cloudinary
 from pathlib import Path
-import environ
+
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-env = environ.Env()
-environ.Env.read_env(BASE_DIR / '.env')
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = env('SECRET_KEY')
+SECRET_KEY = os.environ.get("SECRET_KEY")
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = env.bool('DEBUG', default=True)
+DEBUG = int(os.environ.get("DEBUG", default=0))
 
-ALLOWED_HOSTS = ['127.0.0.1', 'localhost',]
+# ALLOWED_HOSTS = ['127.0.0.1', 'localhost',]
+ALLOWED_HOSTS = os.environ.get("DJANGO_ALLOWED_HOSTS").split(" ")
 
 # Application definition
 
@@ -81,8 +81,8 @@ EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
 EMAIL_HOST = 'smtp.gmail.com'
 EMAIL_PORT = 587
 EMAIL_USE_TLS = True
-EMAIL_HOST_USER = env('EMAIL_HOST_USER')
-EMAIL_HOST_PASSWORD = env('EMAIL_HOST_PASSWORD')
+EMAIL_HOST_USER = os.environ.get('EMAIL_HOST_USER')
+EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD')
 
 
 REDIS_HOST = 'localhost'  # Địa chỉ host của Redis
@@ -149,14 +149,25 @@ TEMPLATES = [
 
 AUTH_USER_MODEL = 'jobs.User'
 
+# DATABASES = {
+#     'default': {
+#         'ENGINE': 'django.db.backends.mysql',
+#         'NAME': env('MYSQL_DATABASE'),
+#         'USER': env('DATABASE_USER'),
+#         'PASSWORD': env('DATABASE_PASSWORD'),
+#         'HOST': env('DATABASE_HOST', default=''),
+#         'PORT': env('DATABASE_PORT', default='3306'),
+#     }
+# }
+
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.mysql',
-        'NAME': env('DATABASE_NAME'),
-        'USER': env('DATABASE_USER'),
-        'PASSWORD': env('DATABASE_PASSWORD'),
-        'HOST': env('DATABASE_HOST', default=''),
-        'PORT': env('DATABASE_PORT', default='3306'),
+        'ENGINE': os.environ.get('django.db.backends.mysql'),
+        'NAME': os.environ.get('MYSQL_DATABASE', os.path.join(BASE_DIR, 'db.mysql')),
+        'USER': os.environ.get('MYSQL_USER', "baotrinh"),
+        'PASSWORD': os.environ.get('MYSQL_PASSWORD', "123456"),
+        'HOST': os.environ.get('MYSQL_HOST', "localhost"),
+        'PORT': os.environ.get('MYSQL_PORT', default='3306'),
     }
 }
 
