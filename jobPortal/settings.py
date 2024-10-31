@@ -154,27 +154,28 @@ TEMPLATES = [
 
 AUTH_USER_MODEL = 'jobs.User'
 
-# DATABASES = {
-#     'default': {
-#         'ENGINE': 'django.db.backends.mysql',
-#         'NAME': env('MYSQL_DATABASE'),
-#         'USER': env('DATABASE_USER'),
-#         'PASSWORD': env('DATABASE_PASSWORD'),
-#         'HOST': env('DATABASE_HOST', default=''),
-#         'PORT': env('DATABASE_PORT', default='3306'),
-#     }
-# }
-
 DATABASES = {
     'default': {
-        "ENGINE": os.environ.get("MYSQL_ENGINE", "django.db.backends.sqlite3"),
-        "NAME": os.environ.get("MYSQL_DATABASE", os.path.join(BASE_DIR, 'db.sqlite3')),
-        'USER': os.environ.get('MYSQL_USER', 'myuser'),
-        'PASSWORD': os.environ.get('MYSQL_PASSWORD', 'myuserpassword'),
-        'HOST': os.environ.get('MYSQL_HOST', 'localhost'),
-        'PORT': os.environ.get('MYSQL_PORT', default='3306'),
+        'ENGINE': 'django.db.backends.mysql',
+        'NAME': os.environ.get("DATABASE_NAME"),
+        'USER': os.environ.get('DATABASE_USER'),
+        'PASSWORD': os.environ.get('DATABASE_PASSWORD'),
+        'HOST': os.environ.get('DATABASE_HOST', default=''),
+        'PORT': os.environ.get('DATABASE_PORT', default='3306'),
     }
 }
+
+#
+# DATABASES = {
+#     'default': {
+#         "ENGINE": os.environ.get("MYSQL_ENGINE", "django.db.backends.sqlite3"),
+#         "NAME": os.environ.get("MYSQL_DATABASE", os.path.join(BASE_DIR, 'db.sqlite3')),
+#         'USER': os.environ.get('MYSQL_USER', 'myuser'),
+#         'PASSWORD': os.environ.get('MYSQL_PASSWORD', 'myuserpassword'),
+#         'HOST': os.environ.get('MYSQL_HOST', 'localhost'),
+#         'PORT': os.environ.get('MYSQL_PORT', default='3306'),
+#     }
+# }
 
 # Phần upload ảnh lên Cloudinary
 cloudinary.config(
@@ -239,11 +240,9 @@ OAUTH2_PROVIDER = {
 
 SITE_URL ='http://localhost:3000'
 
-STRIPE_SECRET_KEY = 'sk_test_51PzHBhP5Uv4CEUblMyW7gjjY1QC6Z6A5i63X67uEOkVJwcxAuBQdMtMF2FyTiiNFgZnXiXd3Mw1bBUnUIOTHIbkb00u0hfE8Jk'
+STRIPE_SECRET_KEY = os.environ.get("STRIPE_SECRET_KEY")
 
 CSRF_TRUSTED_ORIGINS = [
     'http://localhost:3000',
 ]
 
-CLIENT_ID = "3Mj3P2rLZV34jTnqcn09cc0cAGAZATPjUfhO9ftG"
-CLIENT_SECRET = "77sUVuOmGc5O2vwfxmCHZEEAJ6qfJBLYUMaKSti6jnhZ04GrL30DtLyLo5gcf6x1DxUJZiHV6Uf3ClH2NlyHVuHqjnxSFMr2ZwCktWWTfr3lF8YKN6VHJGTFZ6dYhnQv"
